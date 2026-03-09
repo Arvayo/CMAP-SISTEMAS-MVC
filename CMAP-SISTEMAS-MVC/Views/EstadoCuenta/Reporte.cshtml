@@ -1,0 +1,67 @@
+﻿@model CMAP_SISTEMAS_MVC.Models.ViewModels.EstadoCuenta.EstadoCuentaIndexVM
+@{
+    ViewData["Title"] = "Reporte Estado de Cuenta";
+    var r = Model.Reporte;
+}
+
+<h2>Reporte Estado de Cuenta</h2>
+
+@if (r == null)
+{
+    <div class="alert alert-danger">No hay reporte para mostrar.</div>
+    return;
+}
+
+<div class="card mt-3">
+    <div class="card-header">
+        <b>Pensión:</b> @r.Pension
+    </div>
+    <div class="card-body">
+        <div><b>Nombre:</b> @r.NombreCompleto</div>
+        <div><b>Saldo Ahorros:</b> @r.SaldoAhorros</div>
+        <div><b>Sueldo Neto:</b> @r.SueldoNetoTotal</div>
+
+        <hr />
+
+        <div>@r.Linea3_1</div>
+        <div>@r.Linea3_2</div>
+        <div>@r.Linea4_1</div>
+        <div>@r.Linea4_2</div>
+        <div>@r.Linea5_1</div>
+
+        <hr />
+
+        <h5>Préstamos</h5>
+        <div class="table-responsive">
+            <table class="table table-sm table-striped">
+                <thead>
+                    <tr>
+                        <th>Tipo</th>
+                        <th>Nombre</th>
+                        <th>Fecha</th>
+                        <th>Importe</th>
+                        <th>Saldo</th>
+                        <th>Vence</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var p in r.Prestamos)
+                    {
+                        <tr>
+                            <td>@p.TipoPrestamo</td>
+                            <td>@p.NombrePrestamo</td>
+                            <td>@p.FechaPrestamo?.ToString("dd/MM/yyyy")</td>
+                            <td>@p.ImportePrestamo</td>
+                            <td>@p.Saldo</td>
+                            <td>@p.FechaVencimiento?.ToString("dd/MM/yyyy")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <a asp-controller="EstadoCuenta" asp-action="Index" class="btn btn-secondary mt-2">
+            Volver
+        </a>
+    </div>
+</div>

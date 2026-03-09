@@ -1,0 +1,929 @@
+﻿/* ============================================================================
+     DESCRIPCIÓN:
+     Estilos globales del sistema:
+       - Layout general (sidebar fijo + contenido)
+       - Sidebar (menú lateral + submenús)
+       - Topbar (barra superior + acciones)
+       - Contenedor principal de vistas
+       - Footer
+       - Modo oscuro (body.dark)
+   DEPENDENCIAS IMPORTANTES (JS):
+     - .menu-lateral.close   => colapsa sidebar (toggle)
+     - .has-submenu.open     => abre submenú (toggle)
+     - body.dark             => modo oscuro (toggle)
+   ============================================================================ */
+
+
+/* ============================================================================
+   /* === 1) VARIABLES GLOBALES / TEMA (CSS CUSTOM PROPERTIES) ===
+   - Todas las medidas y colores base viven aquí.
+   - body.dark redefine variables para "tema oscuro".
+   ============================================================================ */
+:root {
+    /* === Colores principales === */
+    --bg: #0f172a; /* sidebar bg */
+    --bg-2: #111827; /* sidebar secondary */
+    --panel: #ffffff; /* content panels */
+    --page: #f5f7fb; /* main background */
+    --text: #0f172a;
+    --muted: #6b7280;
+    --primary: #2563eb;
+    --primary-2: #1d4ed8;
+    /* === Superficies (UI) === */
+    --surface: #ffffff; /* tarjetas/botones */
+    --surface-2: rgba(255,255,255,0.75); /* topbar */
+    --shadow-soft: 0 8px 20px rgba(15, 23, 42, 0.08);
+    /* === Bordes / sombras === */
+    --border: rgba(15, 23, 42, 0.08);
+    --shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+    /* === Radios / tamaños de layout === */
+    --radius: 14px;
+    --sidebar-w: 280px;
+    --sidebar-collapsed: 84px;
+    --topbar-h: 64px;
+    /* === Animación / tipografía === */
+    --trans: 220ms ease;
+    --font: system-ui, -apple-system, Segoe UI, Roboto, Arial, "Noto Sans", "Helvetica Neue", sans-serif;
+}
+
+/* ============================================================================
+   /* === 2) BASE (BODY) ===
+   - Se recomienda mantener aquí cosas globales (background, font, color).
+   ============================================================================ */
+body {
+    font-family: var(--font);
+    background: var(--page);
+    color: var(--text);
+}
+
+/* ============================================================================
+   /* === 3) LAYOUT PRINCIPAL (APP SHELL) ===
+   Estructura:
+     .app-shell
+        .menu-lateral (fixed)
+        .app-content  (margin-left dinámico)
+   ============================================================================ */
+.app-shell {
+    display: flex;
+    min-height: 100vh;
+    width: 100%;
+}
+
+/* ============================================================================
+   /* === 4) SIDEBAR (MENÚ LATERAL) ===
+   NOTAS:
+     - Sidebar fijo (position: fixed) para ocupar 100vh y no desplazarse con el contenido.
+     - El contenido (.app-content) se recorre con margin-left.
+     - Z-index alto para que siempre quede arriba del contenido.
+   ============================================================================ */
+.menu-lateral {
+    display: flex;
+    flex-direction: column;
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 100vh;
+    /* === Tamaño base === */
+    width: var(--sidebar-w);
+    /* === Estética === */
+    background: linear-gradient(180deg, var(--bg), var(--bg-2));
+    color: #e5e7eb;
+    border-right: 1px solid rgba(255,255,255,0.06);
+    /* === Control / comportamiento === */
+    transition: width var(--trans);
+    overflow: hidden;
+    z-index: 2000; /* Importante: mayor que topbar */
+}
+
+    /* === Estado: SIDEBAR COLAPSADO (lo activa el JS) === */
+    .menu-lateral.close {
+        width: var(--sidebar-collapsed);
+    }
+
+/* ============================================================================
+   /* === 5) CONTENIDO PRINCIPAL (DERECHA) ===
+   - Se “empuja” por el ancho del sidebar.
+   - Cuando el sidebar se colapsa, cambia margin-left y width.
+   ============================================================================ */
+.app-content {
+    margin-left: var(--sidebar-w);
+    width: calc(100% - var(--sidebar-w));
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 100vh;
+    transition: margin-left var(--trans), width var(--trans);
+    /* Importante: crea contexto visual separado del sidebar */
+    position: relative;
+    z-index: 1;
+}
+
+/* === Cuando sidebar está colapsado, el contenido se ajusta === */
+.menu-lateral.close ~ .app-content {
+    margin-left: var(--sidebar-collapsed);
+    width: calc(100% - var(--sidebar-collapsed));
+}
+
+/* ============================================================================
+   /* === 6) SIDEBAR: HEADER / LOGO ===
+   NOTA: aquí se controla el "alto reservado" para el logo.
+   - height: 170px => valor de referencia usado por .menu-bar (calc(100vh - 170px))
+   ============================================================================ */
+.menu-lateral header {
+    flex: 0 0 120px;
+    padding-top: 25px; /* ajusta a gusto */
+    padding-bottom: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    
+}
+
+    /* === Contenedor del logo === */
+    .menu-lateral header .logo {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+    }
+
+/* === Imagen del logo === */
+.logoEmpresa {
+    width: 200px;
+    height: auto;
+    padding: 10px;
+    max-height: 100%;
+    object-fit: contain;
+    display: block;
+}
+
+/* === Logo al colapsar sidebar === */
+.menu-lateral.close .logoEmpresa {
+    width: 100px;
+}
+
+/* === Logo en hover (sidebar colapsado, expandido temporalmente) === */
+.menu-lateral.close:hover .logoEmpresa {
+    width: 200px;
+}
+
+
+/* ============================================================================
+   /* === 7) SIDEBAR: COMPORTAMIENTO EN COLAPSADO + HOVER ===
+   Objetivo:
+     - Colapsado: ocultar textos y submenús.
+     - Hover: expandir sidebar y mostrar textos/submenús.
+   ============================================================================ */
+
+/* === Colapsado: ocultar flechas y submenús completos === */
+.menu-lateral.close .has-submenu .icon-arrow {
+    display: none;
+}
+
+.menu-lateral.close .has-submenu .list__show {
+    display: none !important;
+}
+
+/* === Hover sobre sidebar colapsado: expandirlo === */
+.menu-lateral.close:hover {
+    width: var(--sidebar-w);
+}
+
+    /* === Hover: input del buscador vuelve visible === */
+    .menu-lateral.close:hover .search-box input {
+        display: block;
+        width: 100%;
+    }
+
+    /* === Hover: el contenido se ajusta al ancho expandido === */
+    .menu-lateral.close:hover ~ .app-content {
+        margin-left: var(--sidebar-w);
+        width: calc(100% - var(--sidebar-w));
+    }
+
+    /* === Hover: mostrar texto y flechas de submenú === */
+    .menu-lateral.close:hover .nav-text {
+        display: inline;
+    }
+
+    .menu-lateral.close:hover .has-submenu .icon-arrow {
+        display: inline-block !important;
+    }
+
+    /* === Hover + abierto: permitir submenú visible === */
+    .menu-lateral.close:hover .has-submenu.open .list__show {
+        display: block !important;
+    }
+
+/* === (Opcional) hover genérico para elementos de toggle internos
+   NOTA: actualmente .toggle no aparece en el CSS/HTML compartido,
+   pero lo dejamos documentado por si lo agregas. === */
+.menu-lateral .toggle:hover {
+    background: rgba(255,255,255,0.12);
+    transform: translateY(-1px);
+}
+
+
+/* ============================================================================
+   /* === 8) SIDEBAR: MENÚ (SCROLL, LISTAS, ITEMS) ===
+   - .menu-bar: contenedor scrollable
+   - .menu: lista
+   - .nav-link: item padre
+   - .nav__link--inside: items del submenú
+   ============================================================================ */
+.menu-bar {
+    flex: 1; /* ocupa el resto del alto */
+    /* IMPORTANTE: Debe coincidir con la altura del header del sidebar */
+    height: calc(100vh - 140px);
+    overflow-y: auto;
+    overflow-x: hidden;
+    /* Ocultar scrollbar (Firefox) */
+    padding: 12px 10px 18px;
+}
+
+    /* Ocultar scrollbar (Webkit) */
+    .menu-bar::-webkit-scrollbar {
+        width: 0;
+        height: 0;
+    }
+
+    .menu-bar::-webkit-scrollbar-thumb {
+        background: rgba(255,255,255,0.10);
+        border-radius: 999px;
+    }
+
+    .menu-bar::-webkit-scrollbar-track {
+        background: transparent;
+    }
+
+/* === Lista principal === */
+.menu {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+
+/* ============================================================================
+   /* === 9) BUSCADOR DEL MENÚ ===
+   ============================================================================ */
+.search-box {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border-radius: 12px;
+    background: rgba(255,255,255,0.06);
+    margin: 8px 6px 14px;
+    margin-top: 10px; /* “valor visual”: separa del logo */
+}
+
+    /* === Input del buscador === */
+    .search-box input {
+        width: 100%;
+        border: 0;
+        outline: none;
+        background: transparent;
+        color: #e5e7eb;
+        font-size: 0.95rem;
+    }
+
+        .search-box input::placeholder {
+            color: rgba(229,231,235,0.65);
+        }
+
+    /* === Ícono dentro del buscador (slot fijo) === */
+    .search-box .icon {
+        width: 24px;
+        min-width: 24px;
+        display: flex;
+        align-items: center;
+        justify-content: flex-start;
+    }
+
+
+/* ============================================================================
+   /* === 10) ÍCONOS Y ITEMS PRINCIPALES DEL MENÚ ===
+   ============================================================================ */
+.icon {
+    font-size: 1.25rem;
+    min-width: 22px;
+    opacity: 0.95;
+}
+
+.nav-link {
+    margin: 1px;
+}
+
+    /* === Enlace principal del menú === */
+    .nav-link > a {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 12px;
+        border-radius: 12px;
+        color: #e5e7eb;
+        text-decoration: none;
+        transition: background var(--trans), transform var(--trans);
+    }
+
+        .nav-link > a:hover {
+            background: rgba(255,255,255,0.08);
+            transform: translateY(-1px);
+        }
+
+/* === Texto del menú (se oculta cuando sidebar está colapsado) === */
+.nav-text {
+    font-size: 0.95rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* === Estado: colapsado => ocultar textos y algunos elementos === */
+.menu-lateral.close .nav-text,
+.menu-lateral.close .search-box input,
+.menu-lateral.close .mode-text.text {
+    display: none;
+}
+
+
+/* ============================================================================
+   /* === 11) SUBMENÚS ===
+   - icon-arrow rota en open
+   - list__show se muestra solo si el padre tiene .open
+   ============================================================================ */
+.has-submenu .icon-arrow {
+    margin-left: auto;
+    transition: transform var(--trans);
+    opacity: 0.85;
+}
+
+/* === Estado: submenú abierto === */
+.has-submenu.open .icon-arrow {
+    transform: rotate(90deg);
+}
+
+/* === Submenú oculto por defecto === */
+.list__show {
+    list-style: none;
+    margin: 6px 0 0 0;
+    padding: 0 0 0 34px;
+    display: none;
+}
+
+/* === Mostrar submenú cuando el padre está en open === */
+.has-submenu.open .list__show {
+    display: block;
+    animation: submenuIn 160ms ease-out;
+}
+
+/* === Animación simple del submenú === */
+@keyframes submenuIn {
+    from {
+        opacity: 0;
+        transform: translateY(-4px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* === Enlaces internos del submenú === */
+.nav__link--inside {
+    display: block;
+    padding: 8px 10px;
+    margin: 4px 6px;
+    border-radius: 10px;
+    color: rgba(229,231,235,0.85);
+    text-decoration: none;
+    font-size: 0.92rem;
+    transition: background var(--trans), color var(--trans);
+}
+
+    .nav__link--inside:hover {
+        background: rgba(255,255,255,0.08);
+        color: #fff;
+    }
+
+/* ============================================================================
+   /* === SIDEBAR OVERLAY (MÓVIL) ===
+   - Se activa cuando sidebar está abierto en pantallas pequeñas.
+============================================================================ */
+
+.sidebar-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+    backdrop-filter: blur(2px);
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 200ms ease, visibility 200ms ease;
+    z-index: 1500; /* menor que sidebar (2000), mayor que contenido */
+}
+
+/* Cuando el sidebar NO tiene .close (está abierto en móvil) */
+@media (max-width: 768px) {
+    .menu-lateral:not(.close) ~ .sidebar-overlay {
+        opacity: 1;
+        visibility: visible;
+    }
+}
+
+
+/* ============================================================================
+   /* === 12) TOPBAR (BARRA SUPERIOR) ===
+   - position: sticky => se queda arriba al hacer scroll
+   - z-index menor que sidebar (sidebar debe estar por arriba)
+   ============================================================================ */
+.topbar {
+    position: sticky;
+    top: 0;
+    z-index: 1000;
+    height: var(--topbar-h);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 18px;
+    background: rgba(255,255,255,0.75);
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--border);
+}
+
+.topbar-left,
+.topbar-right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.welcome {
+    color: var(--muted);
+    font-size: 0.95rem;
+}
+
+
+/* ============================================================================
+   /* === 13) BOTONES DE TOPBAR ===
+   - .btn-topbar: login/logout
+   - .btn-sidebar-toggle: botón que colapsa el sidebar
+   ============================================================================ */
+.btn-topbar {
+    border: 1px solid var(--border);
+    background: #fff;
+    color: var(--text);
+    padding: 8px 12px;
+    border-radius: 12px;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    box-shadow: 0 6px 16px rgba(15, 23, 42, 0.06);
+    transition: transform var(--trans), box-shadow var(--trans);
+}
+
+    .btn-topbar:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 10px 22px rgba(15, 23, 42, 0.10);
+    }
+
+/* === Botón toggle del sidebar en topbar === */
+.btn-sidebar-toggle {
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
+    width: 42px; /* antes 42px */
+    height: 42px; /* antes 42px */
+    border-radius: 14px;
+    display: grid;
+    place-items: center;
+    font-size: 1.5rem; /* tamaño del icono */
+    cursor: pointer;
+    box-shadow: 0 8px 20px rgba(15, 23, 42, 0.08);
+    transition: transform var(--trans), box-shadow var(--trans), background var(--trans);
+}
+
+    .btn-sidebar-toggle:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 14px 30px rgba(15, 23, 42, 0.15);
+    }
+
+/* ============================================================================
+   /* === BOTÓN BUSCAR MODULO SOCIOS) ===
+============================================================================ */
+.btn-search {
+    font-weight: 600;
+    border-radius: 8px;
+    padding: 0.6rem 1rem;
+    transition: all 0.2s ease;
+    box-shadow: var(--shadow-soft);
+}
+
+/* === Modo claro === */
+body:not(.dark) .btn-search {
+    background: #2563eb;
+    border: 1px solid #1d4ed8;
+    color: #fff;
+}
+
+    body:not(.dark) .btn-search:hover {
+        background: #1d4ed8;
+        transform: translateY(-1px);
+    }
+
+/* === Modo oscuro === */
+body.dark .btn-search {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    backdrop-filter: blur(6px);
+}
+
+    body.dark .btn-search:hover {
+        background: rgba(255,255,255,0.12);
+        transform: translateY(-1px);
+    }
+
+/* =========================================
+   ALERTA ERROR SUPERIOR - SOCIOS
+========================================= */
+.alert-error-top {
+    background-color: #f8d7da;
+    color: #842029;
+    border: 1px solid #f5c2c7;
+    padding: 14px 18px;
+    border-radius: 10px;
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-weight: 500;
+}
+
+    .alert-error-top .icon-x {
+        font-size: 18px;
+        font-weight: bold;
+    }
+
+/* Dark Mode */
+body.dark .alert-error-top {
+    background-color: #3a1c1f;
+    color: #ffb3b8;
+    border: 1px solid #5a2a2e;
+}
+/* ============================================================================
+   /* === BOTÓN TEMA (LUNA / SOL) ===
+============================================================================ */
+
+.btn-theme-toggle {
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
+    width: 42px;
+    height: 42px;
+    border-radius: 14px;
+    display: grid;
+    place-items: center;
+    font-size: 1.4rem;
+    cursor: pointer;
+    box-shadow: 0 8px 20px rgba(15, 23, 42, 0.08);
+    transition: transform var(--trans), box-shadow var(--trans), background var(--trans);
+}
+
+    .btn-theme-toggle:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 14px 30px rgba(15, 23, 42, 0.15);
+    }
+
+
+/* ============================================================================
+   /* === 14) MAIN CONTENT (CONTENIDO DE VISTAS) ===
+   NOTA:
+     - min-height usa un cálculo con "70px" aproximado por footer.
+       Si el footer cambia de alto, ajusta ese valor.
+   ============================================================================ */
+.main-area {
+    flex: 1;
+    padding: 20px 18px;
+}
+
+.content-container {
+    width: 100%;
+    max-width: none;
+    margin: 0;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 24px;
+    /* valor aproximado considerando topbar + footer */
+    min-height: calc(100vh - var(--topbar-h) - 70px);
+}
+
+
+/* ============================================================================
+   /* === 15) FOOTER ===
+   ============================================================================ */
+footer.border-top {
+    background: transparent;
+    border-top: 1px solid var(--border) !important;
+}
+
+footer .container {
+    max-width: 1200px;
+}
+
+
+/* ============================================================================
+   /* === 16) MODE SWITCH (UI) ===
+   - Componente del toggle de tema (sin lógica aquí, solo estilos)
+   ============================================================================ */
+.mode {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    background: #fff;
+}
+
+/* ícono visible por default (modo claro) */
+.sun-moon .sun {
+    display: none;
+}
+
+/* botón contenedor del switch */
+.toggle-switch {
+    border: 0;
+    background: transparent;
+    padding: 0;
+}
+
+/* slider del switch */
+.switch {
+    width: 44px;
+    height: 24px;
+    background: rgba(15,23,42,0.12);
+    border-radius: 999px;
+    display: inline-block;
+    position: relative;
+}
+
+    /* “bolita” del switch */
+    .switch::after {
+        content: "";
+        position: absolute;
+        width: 18px;
+        height: 18px;
+        border-radius: 999px;
+        top: 3px;
+        left: 3px;
+        background: #fff;
+        box-shadow: 0 6px 16px rgba(15,23,42,0.18);
+        transition: left var(--trans);
+    }
+
+
+/* ============================================================================
+   /* === 17) DARK MODE ===
+   Se activa con: body.dark (JS alterna esa clase).
+   - Redefine variables para que el resto de componentes cambie "solo".
+   ============================================================================ */
+body.dark {
+    --page: #0b1220;
+    --panel: #0f172a;
+    --text: #e5e7eb;
+    --muted: rgba(229,231,235,0.72);
+    --border: rgba(255,255,255,0.08);
+    --shadow: 0 10px 30px rgba(0,0,0,0.35);
+    /* === Superficies (UI) en dark === */
+    --surface: rgba(255,255,255,0.06);
+    --surface-2: rgba(15, 23, 42, 0.75);
+    --shadow-soft: 0 14px 30px rgba(0,0,0,0.35);
+}
+
+    /* === Topbar en oscuro === */
+    body.dark .topbar {
+        background: rgba(15, 23, 42, 0.75);
+    }
+
+    /* === Botones topbar en oscuro === */
+    body.dark .btn-topbar {
+        background: rgba(255,255,255,0.06);
+        color: #e5e7eb;
+    }
+
+    /* === Módulo del modo en oscuro === */
+    body.dark .mode {
+        background: rgba(255,255,255,0.06);
+        color: #e5e7eb;
+    }
+
+    /* === Botón sidebar toggle en oscuro === */
+    body.dark .btn-sidebar-toggle {
+        background: rgba(255,255,255,0.06);
+        color: #e5e7eb;
+        border-color: rgba(255,255,255,0.08);
+    }
+
+    /* === Cambiar íconos sol/luna === */
+    body.dark .sun-moon .sun {
+        display: inline-block;
+    }
+
+    body.dark .sun-moon .moon {
+        display: none;
+    }
+
+    /* === Switch en oscuro === */
+    body.dark .switch {
+        background: rgba(255,255,255,0.18);
+    }
+
+        body.dark .switch::after {
+            left: 23px;
+        }
+
+
+
+/* ============================================================================
+   /* === 18) RESPONSIVE (BREAKPOINTS) ===
+   OBJETIVO:
+     - Tablet: mejorar espacios, mantener layout usable.
+     - Móvil: sidebar como panel (drawer) y contenido a 100%.
+     - Extra pequeño: ajustes de padding/typography.
+
+   DEPENDENCIA:
+     - El JS alterna .menu-lateral.close al presionar el botón.
+     - En móvil usaremos .close como "sidebar oculto".
+   ============================================================================ */
+
+
+/* === TABLET (<= 992px) =====================================================
+   - Mantiene sidebar fijo pero reduce espacios para dar más área al contenido.
+   - Si quieres, aquí podrías reducir el ancho del sidebar (opcional).
+============================================================================ */
+@media (max-width: 992px) {
+
+    /* Reduce un poco el padding del contenido */
+    .main-area {
+        padding: 16px 14px;
+    }
+
+    .content-container {
+        padding: 18px;
+        border-radius: 12px;
+    }
+
+    /* Topbar más compacta */
+    .topbar {
+        padding: 10px 14px;
+    }
+
+    /* Texto del saludo (si llega a romperse) */
+    .welcome {
+        font-size: 0.9rem;
+    }
+}
+
+
+/* === MÓVIL (<= 768px) ======================================================
+   - Sidebar se convierte en "drawer" superpuesto.
+   - app-content ocupa 100% (sin margen izquierdo).
+   - Sidebar por defecto: visible (si no está .close).
+     Recomendación: en móvil normalmente quieres que arranque cerrado.
+     Para eso puedes:
+       a) agregar class="menu-lateral close" en el HTML, o
+       b) en JS detectar ancho y aplicar .close al cargar.
+============================================================================ */
+@media (max-width: 768px) {
+
+    /* El contenido ya NO debe estar empujado por el sidebar */
+    .app-content {
+        margin-left: 0;
+        width: 100%;
+    }
+
+    /* IMPORTANTE:
+       La regla ~ .app-content (cuando sidebar tiene .close) se neutraliza en móvil */
+    .menu-lateral.close ~ .app-content {
+        margin-left: 0;
+        width: 100%;
+    }
+
+    /* Sidebar como panel flotante */
+    .menu-lateral {
+        /* Se superpone encima del contenido */
+        position: fixed;
+        top: 0;
+        left: 0;
+        /* Altura completa y ancho estándar */
+        height: 100vh;
+        width: var(--sidebar-w);
+        /* Sombra para separación visual */
+        box-shadow: 0 20px 60px rgba(0,0,0,0.35);
+        /* Transición más natural tipo drawer */
+        transition: transform var(--trans);
+        transform: translateX(0);
+    }
+
+        /* En móvil: .close significa "oculto" (se va a la izquierda) */
+        .menu-lateral.close {
+            width: var(--sidebar-w); /* mantenemos ancho pero lo ocultamos con transform */
+            transform: translateX(-100%);
+        }
+
+            /* Hover-expand NO aplica bien en móvil (táctil), lo neutralizamos */
+            .menu-lateral.close:hover {
+                width: var(--sidebar-w);
+            }
+
+                .menu-lateral.close:hover ~ .app-content {
+                    margin-left: 0;
+                    width: 100%;
+                }
+
+        /* === AQUÍ ESTÁ LA CLAVE (PARA SUBIR EL MENÚ) =========================
+       NO usamos height ni calc(), mantenemos flex:
+       - header: altura fija en px
+       - menu-bar: flex: 1 (ocupa el resto)
+    ====================================================================== */
+
+        .menu-lateral header {
+            flex: 0 0 120px; /* Ajusta: 110px / 120px / 130px */
+            padding-top: 10px; /* Ajusta: 8px / 10px / 12px */
+            padding-bottom: 10px;
+        }
+
+    .menu-bar {
+        flex: 1 1 auto; /* ocupa el resto del alto */
+    }
+
+    /* Buscador: SIN empujón grande */
+    .search-box {
+        margin-top: 10px; /* antes 18px, y antes tenías 70px en desktop */
+    }
+
+    /* === CONTENIDO PRINCIPAL === */
+    .main-area {
+        padding: 14px 12px;
+    }
+
+    .content-container {
+        padding: 16px;
+        min-height: auto;
+    }
+
+    /* === TOPBAR === */
+    .topbar {
+        height: auto;
+        padding: 10px 12px;
+        gap: 10px;
+    }
+
+    .topbar-left,
+    .topbar-right {
+        gap: 10px;
+        flex-wrap: wrap;
+    }
+}
+
+
+/* === EXTRA PEQUEÑO (<= 420px) ==============================================
+   - Ajustes finos para pantallas muy pequeñas.
+============================================================================ */
+@media (max-width: 420px) {
+
+    /* Sidebar un poco más angosto (opcional, para que no cubra tanto) */
+    .menu-lateral,
+    .menu-lateral.close {
+        width: 260px; /* override a --sidebar-w en este tamaño */
+    }
+
+    /* Botones más compactos */
+    .btn-topbar {
+        padding: 7px 10px;
+        border-radius: 10px;
+        gap: 6px;
+    }
+
+    .btn-sidebar-toggle {
+        width: 40px;
+        height: 40px;
+        border-radius: 10px;
+    }
+
+    /* Contenedor principal más compacto */
+    .content-container {
+        padding: 14px;
+        border-radius: 12px;
+    }
+
+    /* Texto de menú: ligeramente más pequeño */
+    .nav-text {
+        font-size: 0.92rem;
+    }
+}

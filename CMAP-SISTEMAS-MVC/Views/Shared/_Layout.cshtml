@@ -1,0 +1,474 @@
+﻿@* ============================================================================
+     DESCRIPCIÓN:
+     Layout base del sistema.
+     Contiene:
+       - HEAD (meta, título, estilos)
+       - APP SHELL (sidebar + contenido)
+       - SIDEBAR (menú lateral)
+       - TOPBAR (barra superior: toggle + modo + login/logout)
+       - MAIN (RenderBody)
+       - FOOTER
+       - SCRIPTS (bootstrap, site.js, JS inline + RenderSection Scripts)
+
+   NOTAS DE MANTENIMIENTO:
+     1) Mantén en el layout solo estructura global.
+     2) Si el menú crece más, conviene volverlo dinámico (lista en C# / Partial / ViewComponent).
+     3) La lógica JS (toggle sidebar/submenús/dark mode) idealmente debe vivir en /wwwroot/js/site.js
+   ============================================================================ *@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@ViewData["Title"] - CMAP_SISTEMAS_MVC</title>
+    <script type="importmap"></script>
+    <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="~/CMAP_SISTEMAS_MVC.styles.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+    <link href="https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css" rel="stylesheet">
+</head>
+
+
+<body class="min-vh-100">
+
+    @* /* =========================================================================
+       /* === APP SHELL (CONTENEDOR GENERAL) ===
+          Estructura principal:
+            - nav.menu-lateral   (sidebar)
+            - div.app-content    (contenido)
+       ========================================================================= */ *@
+    <div class="app-shell">
+
+        @* /* =========================================================================
+           /* === MENU LATERAL (SIDEBAR) ===
+              - Clase base: .menu-lateral
+              - Estado colapsado: .close  (JS la alterna)
+              - Elementos con submenú: li.has-submenu
+              - Submenú abierto: .open     (JS la alterna)
+           ========================================================================= */ *@
+        <nav class="menu-lateral" aria-label="Menú lateral">
+
+            @* /* === HEADER DEL MENÚ / LOGO === */ *@
+            <header>
+                <div class="text logo">
+                    <img class="logoEmpresa"
+                         src="~/assets/empresa/imgEmpresa2.svg"
+                         alt="LogoEmpresa">
+                </div>
+            </header>
+
+            @* /* === CUERPO DEL MENÚ === */ *@
+            <div class="menu-bar">
+                <ul class="menu">
+
+                    @* /* === BUSCADOR (UI) ===
+                        Actualmente es solo visual.
+                        Más adelante se puede usar para filtrar opciones del menú con JS.
+                       === */ *@
+                    <li class="search-box">
+                        <i class="bx bx-search icon" aria-hidden="true"></i>
+                        <input type="text" placeholder="Buscar..." aria-label="Buscar en el menú">
+                    </li>
+
+                    @* /* =====================================================================
+                       /* === OPCIONES PRINCIPALES (SIN SUBMENÚ) ===
+                       ===================================================================== */ *@
+
+                    @* /* === SOCIOS === */ *@
+                    <li class="nav-link">
+                        <a asp-controller="Socios"
+                            asp-action="Index"
+                            class="list__bitton--click">
+                            <i class="bx bx-group icon" aria-hidden="true"></i>
+                            <span class="text nav-text">Socios</span>
+                        </a>
+                    </li>
+
+                    @* /* === ESTADO DE CUENTA === */ *@
+                    <li class="nav-link">
+                        <a asp-controller="EstadoCuenta"
+                            asp-action="Index"
+                            class="list__button--click">
+                            <i class="bx bx-file-find icon" aria-hidden="true"></i>
+                            <span class="text nav-text">Estado de Cuenta</span>
+                        </a>
+                    </li>
+
+                    @* /* =====================================================================
+                       /* === MENÚ: PRÉSTAMOS (CON SUBMENÚ) ===
+                          NOTA: Estructura estándar:
+                            li.has-submenu
+                              a.js-submenu-toggle
+                              ul.list__show
+                       ===================================================================== */ *@
+                    <li class="nav-link has-submenu">
+                        <a href="#" class="list__button--click js-submenu-toggle">
+                            <i class="bx bx-credit-card icon" aria-hidden="true"></i>
+                            <span class="text nav-text">Préstamos</span>
+                            <i class="bx bx-chevron-right icon-arrow" aria-hidden="true"></i>
+                        </a>
+
+                        <ul class="list__show">
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Solicitudes</a></li>
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Préstamos</a></li>
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Devoluciones</a></li>
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Abonar a préstamo con Ahorros</a></li>
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Aplicación Remanente</a></li>
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Prórrogas</a></li>
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">1 a 1 ES a PC</a></li>
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Proceso ES a PC</a></li>
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Simulación</a></li>
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Reestructuras</a></li>
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Traspaso de Ahorros</a></li>
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Otros Movimientos</a></li>
+                        </ul>
+                    </li>
+
+                    @* /* =====================================================================
+                       /* === MENÚ: PAGOS (CON SUBMENÚ) ===
+                       ===================================================================== */ *@
+                    <li class="nav-link has-submenu">
+                        <a href="#" class="list__button--click js-submenu-toggle">
+                            <i class="bx bx-wallet icon" aria-hidden="true"></i>
+                            <span class="text nav-text">Pagos</span>
+                            <i class="bx bx-chevron-right icon-arrow" aria-hidden="true"></i>
+                        </a>
+
+                        <ul class="list__show">
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Pago de Prestamos</a></li>
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Cancelacion de Pagos</a></li>
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Pagos Referenciados Rap</a></li>
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Pago Socios Comisionados</a></li>
+                        </ul>
+                    </li>
+
+                    @* /* =====================================================================
+                       /* === MENÚ: CAJAS (CON SUBMENÚ) ===
+                       ===================================================================== */ *@
+                    <li class="nav-link has-submenu">
+                        <a href="#" class="list__button--click js-submenu-toggle">
+                            <i class="bx bx-calculator icon" aria-hidden="true"></i>
+                            <span class="text nav-text">Cajas</span>
+                            <i class="bx bx-chevron-right icon-arrow" aria-hidden="true"></i>
+                        </a>
+
+                        <ul class="list__show">
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Caja</a></li>
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Reporte de Caja</a></li>
+                        </ul>
+                    </li>
+
+                    @* /* =====================================================================
+                       /* === MENÚ: ASISTENCIA SOCIAL (CON SUBMENÚ) ===
+                       ===================================================================== */ *@
+                    <li class="nav-link has-submenu">
+                        <a href="#" class="list__button--click js-submenu-toggle">
+                            <i class="bx bx-donate-heart icon" aria-hidden="true"></i>
+                            <span class="text nav-text">Asistencia Social</span>
+                            <i class="bx bx-chevron-right icon-arrow" aria-hidden="true"></i>
+                        </a>
+
+                        <ul class="list__show">
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Administracion</a></li>
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Convocatorias</a></li>
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Apoyos Vigentes</a></li>
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Becarios</a></li>
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Infantes</a></li>
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Generar Guarderias</a></li>
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Presupuesto General</a></li>
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Pensionistas Directos</a></li>
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Infantes</a></li>
+                        </ul>
+                    </li>
+
+                    @* /* =====================================================================
+                       /* === MENÚ: NOMINAS (CON SUBMENÚ) ===
+                       ===================================================================== */ *@
+                    <li class="nav-link has-submenu">
+                        <a href="#" class="list__button--click js-submenu-toggle">
+                            <i class="bx bx-book-bookmark icon" aria-hidden="true"></i>
+                            <span class="text nav-text">Nominas</span>
+                            <i class="bx bx-chevron-right icon-arrow" aria-hidden="true"></i>
+                        </a>
+
+                        <ul class="list__show">
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Listado de Nominas</a></li>
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Iniciar/Continuar Nomina</a></li>
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Revertir Nomina</a></li>
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Respaldar BD</a></li>
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Calendario</a></li>
+                        </ul>
+                    </li>
+
+                    @* /* =====================================================================
+                       /* === MENÚ: FINANZAS (CON SUBMENÚ) ===
+                       ===================================================================== */ *@
+                    <li class="nav-link has-submenu">
+                        <a href="#" class="list__button--click js-submenu-toggle">
+                            <i class="bx bx-money icon" aria-hidden="true"></i>
+                            <span class="text nav-text">Finanzas</span>
+                            <i class="bx bx-chevron-right icon-arrow" aria-hidden="true"></i>
+                        </a>
+
+                        <ul class="list__show">
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Alta/Modificacion Clabes Interbancarias</a></li>
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Asignacion de Folio</a></li>
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Consiliacion Archivos Banco vs Contpaq</a></li>
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Cuentas Contables</a></li>
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Depositos por Aplicar</a></li>
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Facturas de Proveedores</a></li>
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Inversiones</a></li>
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Movimientos de Banco</a></li>
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Operaciones Diarias</a></li>
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Pago a Cooperativas</a></li>
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Poliza Diaria</a></li>
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Proceso de interes Devengado</a></li>
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Transferencias por Aplicar</a></li>
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Transpasos entre mis cuentas de Banco</a></li>
+                        </ul>
+                    </li>
+
+                    @* /* =====================================================================
+                       /* === MENÚ: COMPRAS (CON SUBMENÚ) ===
+                       ===================================================================== */ *@
+                    <li class="nav-link has-submenu">
+                        <a href="#" class="list__button--click js-submenu-toggle">
+                            <i class="bx bx-cart-alt icon" aria-hidden="true"></i>
+                            <span class="text nav-text">Compras</span>
+                            <i class="bx bx-chevron-right icon-arrow" aria-hidden="true"></i>
+                        </a>
+
+                        <ul class="list__show">
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Requisicion de Compra</a></li>
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Ordenes de Compra</a></li>
+                        </ul>
+                    </li>
+
+                    @* /* =====================================================================
+                       /* === MENÚ: REPORTES (CON SUBMENÚ) ===
+                       ===================================================================== */ *@
+                    <li class="nav-link has-submenu">
+                        <a href="#" class="list__button--click js-submenu-toggle">
+                            <i class="bx bx-list-ul icon" aria-hidden="true"></i>
+                            <span class="text nav-text">Reportes</span>
+                            <i class="bx bx-chevron-right icon-arrow" aria-hidden="true"></i>
+                        </a>
+
+                        <ul class="list__show">
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Acumulado de Préstamos</a></li>
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Bitacora Actualización</a></li>
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Bolestas Recibidas</a></li>
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Concentrado Diario</a></li>
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Constancias Recibidas</a></li>
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Direccion y Administrador de Programas Sociales</a></li>
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Documentos Operados Presencial y no Presencial</a></li>
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Estadistica de Movimientos</a></li>
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Guarderia (Relacion de Infantiles)</a></li>
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Integración de Saldo de Cuenta Individual para el Retiro</a></li>
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Movimiento de Ahorro por Concepto de Afectado</a></li>
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Movimiento diario de Ahorros</a></li>
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Movimiento diario de Prestamos</a></li>
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Movimiento Pagares Emitidos</a></li>
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Pagos Recibidos en el Dia por Usuario</a></li>
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Paquetes de Localidad</a></li>
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Préstamos Otorgados Vigentes y no Vigentes</a></li>
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Recuperación</a></li>
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Reloación de Clabes</a></li>
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Relación de Avisos de Privacidad Firmados y Raecibidos</a></li>
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Relación de Becarios</a></li>
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Relación de Cédulas Recibidas</a></li>
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Relación de devoluciones por Sucursales</a></li>
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Relación de Documentos Pendientes por Firmar</a></li>
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Relación de Préstamos Vencidos</a></li>
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Relación Tutores</a></li>
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Reporte Crédito Hipotecario</a></li>
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Reporte de Documentos Pendientes por Firmar</a></li>
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Resumen de Socios</a></li>
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Saldo de Aportaciones a Ahorros</a></li>
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Saldo por Tipo de Préstamo</a></li>
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Socios</a></li>
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Socios que Utilizan su Remanente</a></li>
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Vencimientos</a></li>
+                        </ul>
+                    </li>
+
+                    @* /* =====================================================================
+                       /* === MENÚ: CATALOGOS (CON SUBMENÚ) ===
+                       ===================================================================== */ *@
+                    <li class="nav-link has-submenu">
+                        <a href="#" class="list__button--click js-submenu-toggle">
+                            <i class="bx bx-list-plus icon" aria-hidden="true"></i>
+                            <span class="text nav-text">Catalogos</span>
+                            <i class="bx bx-chevron-right icon-arrow" aria-hidden="true"></i>
+                        </a>
+
+                        <ul class="list__show">
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Roles</a></li>
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Usuario</a></li>
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Activar Mantenimiento</a></li>
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Autorizar Socio</a></li>
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Bono Retiro Año</a></li>
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Beneficiados SS</a></li>
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Causales de Baja SA</a></li>
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Concepto Afectacion</a></li>
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Correos Institucionales Region</a></li>
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Grupos Gastos Medicos</a></li>
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Grupos Prevencion Salud</a></li>
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Motivos de Bloqueos Socios</a></li>
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Motivos de Rechazo SA</a></li>
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Proveedores</a></li>
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Niveles Educativos</a></li>
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Tabulador</a></li>
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Tipo de Notificacion</a></li>
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Notificaciones</a></li>
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Tipo Patrimonio</a></li>
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Tipo Prestamos</a></li>
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Tipo Poliza</a></li>
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Tipo Proveedor</a></li>
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Socio Codigos</a></li>
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Modificar Clabe Interbancaria</a></li>
+                            <li class="list__inside"><a href="#" class="nav__link nav__link--inside">Porcentaje de Retiro</a></li>
+                        </ul>
+                    </li>
+
+                    @* /* =====================================================================
+                       /* === ENLACES FINALES (SIN SUBMENÚ) ===
+                       ===================================================================== */ *@
+                    <li class="nav-link">
+                        <a href="#" class="list__button--click">
+                            <i class="bx bx-church icon" aria-hidden="true"></i>
+                            <span class="text nav-text">Notificar Fallecimiento</span>
+                        </a>
+                    </li>
+
+                    <li class="nav-link">
+                        <a href="#" class="list__button--click">
+                            <i class="bx bx-stats icon" aria-hidden="true"></i>
+                            <span class="text nav-text">Socios Dashboard</span>
+                        </a>
+                    </li>
+
+                    <li class="nav-link">
+                        <a href="#" class="list__button--click">
+                            <i class="bx bx-error-circle icon" aria-hidden="true"></i>
+                            <span class="text nav-text">Socios (Sin Pension)</span>
+                        </a>
+                    </li>
+
+                </ul>
+            </div>
+        </nav>
+
+        @* /* =========================================================================
+           /* === CONTENIDO PRINCIPAL (DERECHA) ===
+              Incluye:
+                - topbar (barra superior)
+                - main (RenderBody)
+                - footer
+           ========================================================================= */ *@
+
+        <div class="sidebar-overlay"></div>
+
+        <div class="app-content">
+
+            @* /* =====================================================================
+               /* === TOPBAR (BARRA SUPERIOR) ===
+                  IZQUIERDA:
+                    - botón toggle sidebar
+                    - switch modo oscuro
+                  DERECHA:
+                    - mensaje de bienvenida
+                    - login/logout
+               ===================================================================== */ *@
+            <header class="topbar">
+
+                @* /* === IZQUIERDA: ACCIONES DE UI === */ *@
+                <div class="topbar-left">
+
+                    @* /* === TOGGLE MENÚ LATERAL === */ *@
+                    <button type="button" class="btn-sidebar-toggle" aria-label="Abrir/Cerrar menú">
+                        <i class="bx bx-menu" aria-hidden="true"></i>
+                    </button>
+
+                    @* /* === DARK MODE (UI) === */ *@
+
+                    <!-- === BOTÓN DARK MODE SIMPLE === -->
+                    <button type="button" class="btn-theme-toggle" aria-label="Cambiar modo">
+                        <i class="bx bx-moon theme-icon"></i>
+                    </button>
+
+                </div>
+
+                @* /* === DERECHA: AUTENTICACIÓN / SESIÓN === */ *@
+                <div class="topbar-right">
+
+                    @if (User?.Identity?.IsAuthenticated == true)
+                    {
+                        @* /* === USUARIO AUTENTICADO === */ *@
+                        <span class="welcome">
+                            Bienvenido, <strong>@User.Identity!.Name</strong>
+                        </span>
+
+                        @* /* === LOGOUT (POST) === */ *@
+                        <form asp-controller="Account" asp-action="Logout" method="post" class="d-inline">
+                            <button type="submit" class="btn-topbar">
+                                <i class="bx bx-log-out" aria-hidden="true"></i>
+                                Cerrar sesión
+                            </button>
+                        </form>
+                    }
+                    else
+                    {
+                        @* /* === USUARIO NO AUTENTICADO === */ *@
+                        <span class="welcome">Bienvenido</span>
+
+                        @* /* === LOGIN (GET) === */ *@
+                        <a asp-controller="Account" asp-action="Login" class="btn-topbar">
+                            <i class="bx bx-log-in" aria-hidden="true"></i>
+                            Iniciar sesión
+                        </a>
+                    }
+
+                </div>
+            </header>
+
+            @* /* =====================================================================
+               /* === MAIN (CONTENIDO POR VISTA) ===
+                  Aquí se renderiza el contenido de cada Controller/Action:
+                    - Index / Create / Edit / Details, etc.
+               ===================================================================== */ *@
+            <main class="main-area">
+                <div class="content-container">
+                    @RenderBody()
+                </div>
+            </main>
+
+            @* /* =====================================================================
+               /* === FOOTER ===
+               ===================================================================== */ *@
+            <footer class="border-top text-muted py-2">
+                <div class="container">
+                    &copy; 2026 - CMAP Dep. Sistemas
+                </div>
+            </footer>
+
+        </div>
+    </div>
+
+    @* /* =========================================================================
+       /* === SCRIPTS GLOBALES ===
+          Recomendación: scripts al final para mejor performance.
+       ========================================================================= */ *@
+    <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="~/js/site.js" asp-append-version="true"></script>
+    
+    @* /* =========================================================================
+       /* === SECCIÓN OPCIONAL: SCRIPTS POR VISTA ===
+          Ejemplo en una vista:
+            @section Scripts { <script>...</script> }
+       ========================================================================= */ *@
+    @await RenderSectionAsync("Scripts", required: false)
+
+</body>
+</html>

@@ -1,0 +1,37 @@
+﻿@model CMAP_SISTEMAS_MVC.Models.ViewModels.EstadoCuenta.EstadoCuentaIndexVM
+@{
+    ViewData["Title"] = "Estado de Cuenta";
+}
+
+<h2>Estado de Cuenta</h2>
+
+@if (!string.IsNullOrWhiteSpace(Model?.Mensaje))
+{
+    var clase = Model.TipoMensaje == "success"
+        ? "alert alert-success"
+        : "alert alert-danger";
+
+    <div class="@clase mt-3">
+        @Model.Mensaje
+    </div>
+}
+
+<form asp-controller="EstadoCuenta" asp-action="Index" method="post" class="mt-3">
+    @Html.AntiForgeryToken()
+
+    <div class="row g-3 align-items-end">
+        <div class="col-12 col-md-4">
+            <label asp-for="Pension" class="form-label">Pensión</label>
+            <input asp-for="Pension" class="form-control" maxlength="10" autocomplete="off" />
+            <span asp-validation-for="Pension" class="text-danger"></span>
+        </div>
+
+        <div class="col-12 col-md-2 d-grid">
+            <button type="submit" class="btn btn-primary">Generar</button>
+        </div>
+    </div>
+</form>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}
