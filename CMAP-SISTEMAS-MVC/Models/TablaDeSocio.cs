@@ -5,10 +5,11 @@ using System.ComponentModel.DataAnnotations.Schema;
 
 namespace CMAP_SISTEMAS_MVC.Models
 {
-    [Keyless] // ✅ Para poder consultar aunque la tabla no tenga PK
+    
     [Table("TABLA_DE_SOCIOS")]
     public class TablaDeSocio
     {
+        [Key]
         public string? ClavePension { get; set; }
         public string? NombreSocio { get; set; }
         public string? ApellidosSocio { get; set; }
@@ -103,5 +104,20 @@ namespace CMAP_SISTEMAS_MVC.Models
         public decimal? SDOFIDEINICIAL { get; set; }
         public decimal? FIDEPROYECTADO { get; set; }
         public string? CTADEP_NIV { get; set; }
+
+
+        [NotMapped]
+        public string EstatusSocioCalculado
+        {
+            get
+            {
+                if (string.IsNullOrWhiteSpace(ClavePension))
+                    return "";
+
+                return ClavePension.Trim().Substring(0, 1);
+            }
+        }
     }
+
+
 }

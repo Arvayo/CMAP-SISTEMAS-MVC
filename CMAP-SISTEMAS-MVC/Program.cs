@@ -1,4 +1,5 @@
 using CMAP_SISTEMAS_MVC.Data;
+using CMAP_SISTEMAS_MVC.Services;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 
@@ -20,6 +21,8 @@ builder.Services.AddDefaultIdentity<IdentityUser>(options => options.SignIn.Requ
     .AddEntityFrameworkStores<ApplicationDbContext>();
 
 builder.Services.AddControllersWithViews();
+
+builder.Services.AddScoped<EstadoCuentaService, EstadoCuentaService>();
 //----------------------------------//
 
 var app = builder.Build();

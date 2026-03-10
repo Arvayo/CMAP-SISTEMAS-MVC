@@ -17,6 +17,10 @@ namespace CMAP_SISTEMAS_MVC.Data
         public DbSet<TablaDeSocio> TABLA_DE_SOCIOS { get; set; } = null!;
         public DbSet<RptEdoCuenta> RptEdoCuenta { get; set; } = null!;
 
+        public DbSet<TablaDePrestamo> TABLA_DE_PRESTAMOS { get; set; } = null!;
+        public DbSet<TablaDeTiposDePrestamo> TABLA_DE_TIPOS_DE_PRESTAMOS { get; set; } = null!;
+        public DbSet<DetalleDeTiposDePrestamo> DETALLE_DE_TIPOS_DE_PRESTAMOS { get; set; } = null!;
+
         /* =========================================================
          * Model Creating
          * ========================================================= */
@@ -78,6 +82,18 @@ namespace CMAP_SISTEMAS_MVC.Data
 
                 entity.Property(e => e.LiquidaCon).HasColumnName("LiquidaCon");
             });
+
+            modelBuilder.Entity<TablaDePrestamo>()
+                .ToTable("TABLA_DE_PRESTAMOS")
+                .HasNoKey();
+
+            modelBuilder.Entity<TablaDeTiposDePrestamo>()
+                .ToTable("TABLA_DE_TIPOS_DE_PRESTAMOS")
+                .HasNoKey();
+
+            modelBuilder.Entity<DetalleDeTiposDePrestamo>()
+                .ToTable("DETALLE_DE_TIPOS_DE_PRESTAMOS")
+                .HasNoKey();
         }
     }
 }
