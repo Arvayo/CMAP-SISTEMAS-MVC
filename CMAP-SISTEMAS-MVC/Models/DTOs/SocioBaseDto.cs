@@ -11,5 +11,11 @@
         public decimal SaldoPrestamos { get; set; }
         public string? Vigencia { get; set; }
         public string? Situacion { get; set; }
+
+        /// <summary>
+        /// Fecha de ingreso del socio.
+        /// Se usa para determinar generación (PP 2.41 / 1.85)
+        /// </summary>
+        public DateTime? FechaIngreso { get; set; }
     }
 }

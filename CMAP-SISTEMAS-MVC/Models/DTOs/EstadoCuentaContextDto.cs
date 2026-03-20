@@ -33,6 +33,13 @@
         public DateTime FechaSistema { get; set; }
 
         /// <summary>
+        /// Fecha de ingreso del socio.
+        /// Se usa para determinar si pertenece a generación anterior o nueva
+        /// en reglas del préstamo personal (PP).
+        /// </summary>
+        public DateTime? FechaIngreso { get; set; }
+
+        /// <summary>
         /// Saldo de ahorros del socio.
         /// Equivale a MisAhorros.
         /// </summary>

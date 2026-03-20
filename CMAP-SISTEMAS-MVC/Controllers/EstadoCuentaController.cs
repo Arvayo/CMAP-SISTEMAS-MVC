@@ -59,7 +59,11 @@ namespace CMAP_SISTEMAS_MVC.Controllers
                     DescuentosSnteGenerados = false
                 };
 
-                vm.Reporte = await _estadoCuentaService.GenerarEstadoCuentaAsync(contexto);
+                var filasDto = await _estadoCuentaService.GenerarEstadoCuentaAsync(contexto);
+
+                vm.Reporte = filasDto
+                    .Where(x => x.SaldoPrestamo > 0 || x.CantidadPuedeSolicitar > 0)
+                    .ToList();
 
                 vm.Mensaje = $"Estado de cuenta generado: {vm.Pension}. Registros encontrados: {vm.Reporte.Count}";
                 vm.TipoMensaje = "success";

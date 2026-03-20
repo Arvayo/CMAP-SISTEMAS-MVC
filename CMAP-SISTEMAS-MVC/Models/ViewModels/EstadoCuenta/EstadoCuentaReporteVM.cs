@@ -18,6 +18,6 @@ namespace CMAP_SISTEMAS_MVC.Models.ViewModels.EstadoCuenta
         public string? Linea4_2 { get; set; }
         public string? Linea5_1 { get; set; }
 
-        public List<EstadoCuentaItemVM> Prestamos { get; set; } = new();
+        public List<EstadoCuentaRowVM> Prestamos { get; set; } = new();
     }
 }

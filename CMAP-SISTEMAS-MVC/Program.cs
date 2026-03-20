@@ -1,5 +1,6 @@
 using CMAP_SISTEMAS_MVC.Data;
 using CMAP_SISTEMAS_MVC.Services;
+using CMAP_SISTEMAS_MVC.Services.Interfaces;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 
@@ -22,7 +23,11 @@ builder.Services.AddDefaultIdentity<IdentityUser>(options => options.SignIn.Requ
 
 builder.Services.AddControllersWithViews();
 
-builder.Services.AddScoped<EstadoCuentaService, EstadoCuentaService>();
+
+builder.Services.AddScoped<IPrestamoNoPersonalService, PrestamoNoPersonalService>();
+builder.Services.AddScoped<IPrestamoPersonalService, PrestamoPersonalService>();
+builder.Services.AddScoped<IPrestamoCalculatorService, PrestamoCalculatorService>();
+builder.Services.AddScoped<EstadoCuentaService>();
 //----------------------------------//
 
 var app = builder.Build();

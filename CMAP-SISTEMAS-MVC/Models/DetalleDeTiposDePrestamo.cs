@@ -24,7 +24,7 @@
 
         public string? Vigente { get; set; }
 
-        public int? Subcve { get; set; }
+        public int? SubCve { get; set; }
 
         public int NombrePrestamo { get; set; }
     }

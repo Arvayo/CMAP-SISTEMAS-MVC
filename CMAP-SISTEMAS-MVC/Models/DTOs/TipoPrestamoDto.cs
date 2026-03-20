@@ -33,7 +33,7 @@
         /// <summary>
         /// Subclave del préstamo, si aplica.
         /// </summary>
-        public int? SubClave { get; set; }
+        public int? SubCve { get; set; }
 
         /// <summary>
         /// Indica si el préstamo está vigente.
@@ -100,5 +100,7 @@
         /// Meses mínimos cotizados requeridos.
         /// </summary>
         public int MesesMinCotizados { get; set; }
+
+        public string? ClaveDesctoSec { get; set; }
     }
 }
