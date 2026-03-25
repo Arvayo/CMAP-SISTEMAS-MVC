@@ -6,7 +6,7 @@ namespace CMAP_SISTEMAS_MVC.Models.DTOs
     public class PrestamoVigenteDto
     {
         public decimal Id { get; set; }
-        public string? TipoPrestamo { get; set; } = "";
+        public string? TipoPrestamo { get; set; } =  string.Empty;
         public int? SubCve { get; set; }
 
         public decimal SaldoPrestamo { get; set; }

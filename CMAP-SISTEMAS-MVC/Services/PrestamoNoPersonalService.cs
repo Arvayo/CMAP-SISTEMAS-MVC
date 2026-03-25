@@ -70,7 +70,8 @@ namespace CMAP_SISTEMAS_MVC.Services
                 where dp.TipoSocio == ctx.Estatus
                       && dp.Vigencia == ctx.Vigencia
                       && tp.ClavePrestamo != "IC"
-                      
+                     
+
                 select new TipoPrestamoDto
                 {
                     ClavePrestamo = tp.ClavePrestamo ?? string.Empty,
@@ -182,6 +183,14 @@ namespace CMAP_SISTEMAS_MVC.Services
             var prestamosDelTipo = vigentes
                 .Where(p => p.TipoPrestamo == tipo.ClavePrestamo)
                 .ToList();
+
+            if (tipo.ClavePrestamo == "PP" && prestamosDelTipo.Any())
+            {
+                prestamosDelTipo = prestamosDelTipo
+                    .OrderByDescending(x => x.FechaPrestamo ?? DateTime.MinValue)
+                    .Take(1)
+                    .ToList();
+            }
 
             decimal saldoTotal = prestamosDelTipo.Sum(x => x.SaldoPrestamo);
             decimal importeTotal = prestamosDelTipo.Sum(x => x.ImportePagare);

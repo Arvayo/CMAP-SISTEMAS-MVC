@@ -13,9 +13,14 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
 
 //--------------------------------- //
 builder.Services.AddDbContext<Cmap54SistemasContext>(options =>
-    options.UseSqlServer(builder.Configuration.GetConnectionString("CMAP54SISTEMAS")
-         ?? throw new InvalidOperationException("Connection string 'CMAP54SISTEMAS' not found.")));
-        
+    options.UseSqlServer(
+        builder.Configuration.GetConnectionString("CMAP54SISTEMAS")
+        ?? throw new InvalidOperationException("Connection string 'CMAP54SISTEMAS' not found."),
+        sqlOptions =>
+        {
+            sqlOptions.CommandTimeout(120);
+        }));
+
 builder.Services.AddDatabaseDeveloperPageExceptionFilter();
 
 builder.Services.AddDefaultIdentity<IdentityUser>(options => options.SignIn.RequireConfirmedAccount = true)

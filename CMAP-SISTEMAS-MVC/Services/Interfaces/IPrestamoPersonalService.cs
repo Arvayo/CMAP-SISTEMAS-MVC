@@ -4,7 +4,6 @@ namespace CMAP_SISTEMAS_MVC.Services.Interfaces
 {
     public interface IPrestamoPersonalService
     {
-        Task<List<EstadoCuentaRowsDto>> GenerarPrestamosPersonalesAsync(
-            EstadoCuentaContextDto contexto);
+        Task<ResultadoPrestamoPersonalDto> GenerarPrestamosPersonalesAsync(EstadoCuentaContextDto contexto);
     }
 }

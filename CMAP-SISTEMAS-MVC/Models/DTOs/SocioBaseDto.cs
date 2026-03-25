@@ -17,5 +17,20 @@
         /// Se usa para determinar generación (PP 2.41 / 1.85)
         /// </summary>
         public DateTime? FechaIngreso { get; set; }
+
+        /// <summary>
+        /// Estatus del socio (A, J, 3, etc.)
+        /// </summary>
+        public string Estatus { get; set; } = string.Empty;
+
+        /// <summary>
+        /// Salario base del socio (para reglas de descuento)
+        /// </summary>
+        public decimal Salario { get; set; }
+
+        /// <summary>
+        /// Límite de descuento permitido (Ellimite en VB)
+        /// </summary>
+        public decimal LimiteDescuento { get; set; }
     }
 }

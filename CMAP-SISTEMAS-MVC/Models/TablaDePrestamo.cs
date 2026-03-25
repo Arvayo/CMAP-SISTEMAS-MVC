@@ -8,6 +8,8 @@
 
         public string? TipoPrestamo { get; set; }
 
+        public int? SubCve { get; set; }
+
         public decimal? ImportePagare { get; set; }
 
         public decimal? SaldoPrestamo { get; set; }
@@ -19,6 +21,8 @@
         public DateTime? FechaPrestamo { get; set; }
 
         public DateTime? FechaVencimiento { get; set; }
+
+        public DateTime? FechaUltimoPago { get; set; }
 
         public decimal? NumeroPagare { get; set; }
 

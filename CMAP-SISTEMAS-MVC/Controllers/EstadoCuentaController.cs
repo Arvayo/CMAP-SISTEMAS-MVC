@@ -59,13 +59,22 @@ namespace CMAP_SISTEMAS_MVC.Controllers
                     DescuentosSnteGenerados = false
                 };
 
-                var filasDto = await _estadoCuentaService.GenerarEstadoCuentaAsync(contexto);
+                var resultado = await _estadoCuentaService.GenerarEstadoCuentaAsync(contexto);
 
-                vm.Reporte = filasDto
+                resultado.PrestamosNoPersonales = resultado.PrestamosNoPersonales
                     .Where(x => x.SaldoPrestamo > 0 || x.CantidadPuedeSolicitar > 0)
                     .ToList();
 
-                vm.Mensaje = $"Estado de cuenta generado: {vm.Pension}. Registros encontrados: {vm.Reporte.Count}";
+                resultado.PrestamosPersonales = resultado.PrestamosPersonales
+                    .Where(x => x.SaldoPrestamo > 0 || x.CantidadPuedeSolicitar > 0)
+                    .ToList();
+
+                vm.Resultado = resultado;
+
+                int totalRegistros = vm.Resultado.PrestamosNoPersonales.Count
+                                   + vm.Resultado.PrestamosPersonales.Count;
+
+                vm.Mensaje = $"Estado de cuenta generado: {vm.Pension}. Registros encontrados: {totalRegistros}";
                 vm.TipoMensaje = "success";
             }
             catch (Exception ex)

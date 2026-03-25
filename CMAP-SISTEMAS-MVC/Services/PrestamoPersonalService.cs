@@ -39,7 +39,7 @@ namespace CMAP_SISTEMAS_MVC.Services
         /* ============================================================
          * API PÚBLICA
          * ============================================================ */
-        public async Task<List<EstadoCuentaRowsDto>> GenerarPrestamosPersonalesAsync(
+        public async Task<ResultadoPrestamoPersonalDto> GenerarPrestamosPersonalesAsync(
             EstadoCuentaContextDto contexto)
         {
             var tiposPP = await ObtenerTiposPrestamoPersonalAsync(contexto);
@@ -47,22 +47,171 @@ namespace CMAP_SISTEMAS_MVC.Services
                 contexto.ClavePension,
                 contexto.FechaSistema);
 
-            var resultado = new List<EstadoCuentaRowsDto>();
+            var resultado = new ResultadoPrestamoPersonalDto();
 
+            // Caso 1: hay préstamo personal vigente
+            if (prestamoPP != null)
+            {
+                var resumen = ConstruirResumenPrestamoPersonal(contexto, tiposPP, prestamoPP);
+                resultado.Resumen = resumen;
+
+                // Solo si puede renovar mostramos proyección
+                if (resumen.PuedeRenovar)
+                {
+                    foreach (var tipo in tiposPP)
+                    {
+                        var fila = await ConstruirFilaPrestamoPersonalAsync(
+                            contexto,
+                            tipo,
+                            prestamoPP);
+
+                        if (fila != null)
+                        {
+                            resultado.FilasProyeccion.Add(fila);
+                        }
+                    }
+                }
+
+                return resultado;
+            }
+
+            // Caso 2: no hay préstamo personal vigente -> proyección directa
             foreach (var tipo in tiposPP)
             {
                 var fila = await ConstruirFilaPrestamoPersonalAsync(
                     contexto,
                     tipo,
-                    prestamoPP);
+                    null);
 
                 if (fila != null)
                 {
-                    resultado.Add(fila);
+                    resultado.FilasProyeccion.Add(fila);
                 }
             }
 
+            resultado.Resumen = new PrestamoPersonalResumenDTO
+            {
+                TienePrestamoVigente = false,
+                PuedeRenovar = true,
+                CumplePago = true,
+                CumplePlazo = true,
+                DiasFaltantes = 0,
+                MontoFaltanteParaRenovar = 0m,
+                SaldoPrestamoActivo = 0m,
+                LiquidaConPrestamoActivo = 0m,
+                MensajeResultado = "Sin préstamo personal vigente. Se muestra proyección."
+            };
+
             return resultado;
+        }
+
+        private PrestamoPersonalResumenDTO ConstruirResumenPrestamoPersonal(
+        EstadoCuentaContextDto ctx,
+        List<TipoPrestamoDto> tiposPP,
+        PrestamoVigenteDto prestamoPP)
+        {
+            var tipoBase = tiposPP
+                .OrderBy(x => x.SubCve)
+                .FirstOrDefault();
+
+            if (tipoBase == null)
+            {
+                return new PrestamoPersonalResumenDTO
+                {
+                    TienePrestamoVigente = true,
+                    PuedeRenovar = false,
+                    CumplePago = false,
+                    CumplePlazo = false,
+                    DiasFaltantes = 0,
+                    MontoFaltanteParaRenovar = 0m,
+                    SaldoPrestamoActivo = prestamoPP.SaldoPrestamo,
+                    LiquidaConPrestamoActivo = prestamoPP.LiquidaCon,
+                    MensajeResultado = "No se encontró configuración del préstamo personal."
+                };
+            }
+
+            decimal porcentajePagado = 0m;
+            bool cumplePago = false;
+
+            if (prestamoPP.ImportePagare > 0)
+            {
+                porcentajePagado = 1m - (prestamoPP.SaldoPrestamo / prestamoPP.ImportePagare);
+                decimal porcentajeMinimoPagado = tipoBase.PorcenRenova / 100m;
+                cumplePago = porcentajePagado >= porcentajeMinimoPagado;
+            }
+
+            bool cumplePlazo = true;
+            int diasFaltantes = 0;
+
+            if (prestamoPP.FechaPrestamo.HasValue && prestamoPP.FechaVencimiento.HasValue)
+            {
+                var diasTotales = (prestamoPP.FechaVencimiento.Value.Date - prestamoPP.FechaPrestamo.Value.Date).TotalDays;
+                var diasTranscurridos = (ctx.FechaSistema.Date - prestamoPP.FechaPrestamo.Value.Date).TotalDays;
+
+                if (diasTotales > 0)
+                {
+                    var porcentajeTiempo = (decimal)(diasTranscurridos / diasTotales);
+                    var porcentajeMinimoTiempo = 0.20m;
+
+                    cumplePlazo = porcentajeTiempo >= porcentajeMinimoTiempo;
+
+                    if (!cumplePlazo)
+                    {
+                        var diasMinimos = (int)Math.Ceiling(diasTotales * (double)porcentajeMinimoTiempo);
+                        diasFaltantes = diasMinimos - (int)Math.Floor(diasTranscurridos);
+
+                        if (diasFaltantes < 0)
+                            diasFaltantes = 0;
+                    }
+                }
+            }
+
+            decimal montoFaltante = 0m;
+
+            if (prestamoPP.ImportePagare > 0)
+            {
+                decimal porcentajeMinimoPagado = tipoBase.PorcenRenova / 100m;
+                decimal saldoMaximoPermitido = prestamoPP.ImportePagare * (1 - porcentajeMinimoPagado);
+
+                if (prestamoPP.SaldoPrestamo > saldoMaximoPermitido)
+                {
+                    montoFaltante = prestamoPP.SaldoPrestamo - saldoMaximoPermitido;
+                }
+            }
+
+            bool puedeRenovar = cumplePago && cumplePlazo;
+
+            string mensaje;
+
+            if (puedeRenovar)
+            {
+                mensaje = "Puede renovar préstamo personal. Se muestra proyección.";
+            }
+            else if (!cumplePago && !cumplePlazo)
+            {
+                mensaje = $"No puede renovar préstamo personal. Falta abonar {montoFaltante:N2} y faltan {diasFaltantes} días para cumplir plazo.";
+            }
+            else if (!cumplePago)
+            {
+                mensaje = $"No puede renovar préstamo personal. Falta abonar {montoFaltante:N2}.";
+            }
+            else
+            {
+                mensaje = $"No puede renovar préstamo personal. Restan {diasFaltantes} días para cumplir plazo.";
+            }
+
+            return new PrestamoPersonalResumenDTO
+            {
+                TienePrestamoVigente = true,
+                PuedeRenovar = puedeRenovar,
+                CumplePago = cumplePago,
+                CumplePlazo = cumplePlazo,
+                DiasFaltantes = diasFaltantes,
+                MontoFaltanteParaRenovar = Math.Round(montoFaltante, 2),
+                SaldoPrestamoActivo = prestamoPP.SaldoPrestamo,
+                LiquidaConPrestamoActivo = prestamoPP.LiquidaCon,
+                MensajeResultado = mensaje
+            };
         }
 
         /* ============================================================
@@ -82,7 +231,7 @@ namespace CMAP_SISTEMAS_MVC.Services
                 select new TipoPrestamoDto
                 {
                     ClavePrestamo = tp.ClavePrestamo ?? string.Empty,
-                    NombrePrestamo = dp.NombrePrestamo ?? tp.NombrePrestamo ?? string.Empty,
+                    NombrePrestamo = tp.NombrePrestamo ?? string.Empty,
 
                     VecesAhorro = tp.VecesAhorro ?? 0,
                     PorcenRenova = tp.PorcenRenova ?? 0,
@@ -109,19 +258,21 @@ namespace CMAP_SISTEMAS_MVC.Services
          * SECCIÓN B: PRÉSTAMO PP EXISTENTE
          * ============================================================ */
         private async Task<PrestamoVigenteDto?> ObtenerPrestamoPersonalAsync(
-            string clavePension,
-            DateTime fechaSistema)
+        string clavePension,
+        DateTime fechaSistema)
         {
             var row = await _context.TABLA_DE_PRESTAMOS
                 .AsNoTracking()
-                .Where(p => p.ClavePension == clavePension && p.TipoPrestamo == "PP")
-                .OrderByDescending(p => p.EstatusPrestamo)
+                .Where(p => p.ClavePension == clavePension
+                         && p.TipoPrestamo == "PP"
+                         && p.EstatusPrestamo == "VI")
+                .OrderByDescending(p => p.FechaPrestamo)
                 .ThenByDescending(p => p.FechaUltimoPago)
                 .Select(p => new PrestamoVigenteDto
                 {
-                    Id = p.ID,
+                    Id = p.Id ?? 0,
                     TipoPrestamo = p.TipoPrestamo ?? string.Empty,
-                    SubCve = p.SUBCVE,
+                    SubCve = p.SubCve,
                     SaldoPrestamo = p.SaldoPrestamo ?? 0,
                     ImportePagare = p.ImportePagare ?? 0,
                     ImporteAmortizacion = p.ImporteAmortizacion ?? 0,
@@ -141,7 +292,6 @@ namespace CMAP_SISTEMAS_MVC.Services
 
             return row;
         }
-
         /* ============================================================
          * SECCIÓN C: CONSTRUCCIÓN DE FILA PP
          * ============================================================ */
@@ -217,9 +367,9 @@ namespace CMAP_SISTEMAS_MVC.Services
          * SECCIÓN D: REGLAS PP
          * ============================================================ */
         private bool PuedeRenovarPrestamoPersonal(
-            EstadoCuentaContextDto ctx,
-            TipoPrestamoDto tipo,
-            PrestamoVigenteDto prestamoPP)
+     EstadoCuentaContextDto ctx,
+     TipoPrestamoDto tipo,
+     PrestamoVigenteDto prestamoPP)
         {
             if (prestamoPP.ImportePagare <= 0)
                 return false;
@@ -227,7 +377,7 @@ namespace CMAP_SISTEMAS_MVC.Services
             decimal porcentajePagado =
                 1m - (prestamoPP.SaldoPrestamo / prestamoPP.ImportePagare);
 
-            decimal porcentajeMinimoPagado = (tipo.PorcenRenova ?? 20m) / 100m;
+            decimal porcentajeMinimoPagado = tipo.PorcenRenova / 100m;
 
             bool cumplePago = porcentajePagado >= porcentajeMinimoPagado;
 
@@ -241,7 +391,9 @@ namespace CMAP_SISTEMAS_MVC.Services
                 if (diasTotales > 0)
                 {
                     decimal porcentajeTiempo = (decimal)(diasTranscurridos / diasTotales);
-                    decimal porcentajeMinimoTiempo = (tipo.PlazoRenovar ?? 20m) / 100m;
+
+                    // 🔥 regla real (20%)
+                    decimal porcentajeMinimoTiempo = 0.20m;
 
                     cumpleTiempo = porcentajeTiempo >= porcentajeMinimoTiempo;
                 }

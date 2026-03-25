@@ -40,18 +40,72 @@
             </div>
         </form>
 
-        @if (Model.Reporte != null && Model.Reporte.Any())
+        @if (Model.Resultado != null && !string.IsNullOrWhiteSpace(Model.Resultado.Encabezado.ClavePension))
         {
             <hr class="my-4" />
 
-            <h4 class="mb-3">Resultado del Estado de Cuenta</h4>
+            <h4 class="mb-3">1. Información Personal del Socio</h4>
 
-            <div class="table-responsive">
+            <div class="card mb-4">
+                <div class="card-body">
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <strong>Pensión:</strong> @Model.Resultado.Encabezado.ClavePension
+                        </div>
+                        <div class="col-md-8">
+                            <strong>Nombre Socio:</strong> @Model.Resultado.Encabezado.NombreSocio
+                        </div>
+
+                        <div class="col-md-4">
+                            <strong>Saldo Ahorros:</strong> @Model.Resultado.Encabezado.SaldoAhorros.ToString("N2")
+                        </div>
+                        <div class="col-md-4">
+                            <strong>Ahorro Mensual:</strong> @Model.Resultado.Encabezado.AhorroMensual.ToString("N2")
+                        </div>
+                        <div class="col-md-4">
+                            <strong>Sueldo Líquido:</strong> @Model.Resultado.Encabezado.SueldoLiquido.ToString("N2")
+                        </div>
+
+                        <div class="col-md-4">
+                            <strong>Saldo Bono:</strong> @Model.Resultado.Encabezado.SaldoBono.ToString("N2")
+                        </div>
+                        <div class="col-md-4">
+                            <strong>Ap. Bono Mensual:</strong> @Model.Resultado.Encabezado.ApBonoMensual.ToString("N2")
+                        </div>
+                        <div class="col-md-4">
+                            <strong>Liquidez Mínima:</strong> @Model.Resultado.Encabezado.LiquidezMinima.ToString("N2")
+                        </div>
+
+                        <div class="col-md-4">
+                            <strong>Remanente Incluido Ahorros:</strong> @Model.Resultado.Encabezado.RemanenteIncluidoAhorros.ToString("N2")
+                        </div>
+                        <div class="col-md-4">
+                            <strong>Ahorros Diciembre Anterior:</strong> @Model.Resultado.Encabezado.AhorrosDiciembreAnterior.ToString("N2")
+                        </div>
+                        <div class="col-md-4">
+                            <strong>Tipo Socio:</strong> @Model.Resultado.Encabezado.TipoSocio
+                        </div>
+
+                        <div class="col-md-6">
+                            <strong>Archivo:</strong> @Model.Resultado.Encabezado.ArchivoUbicacion
+                        </div>
+                        <div class="col-md-6">
+                            <strong>No. Expediente:</strong> @Model.Resultado.Encabezado.NumeroExpediente
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
+
+        @if (Model.Resultado != null && Model.Resultado.PrestamosNoPersonales.Any())
+        {
+            <h4 class="mb-3">2. Información de Préstamos</h4>
+
+            <div class="table-responsive mb-4">
                 <table class="table table-bordered table-hover table-sm align-middle">
                     <thead class="table-dark">
                         <tr>
-                            <th>Clave Pensión</th>
-                            <th>Clave Préstamo</th>
+                            <th>Clave</th>
                             <th>Subclave</th>
                             <th>Nombre Préstamo</th>
                             <th>Fecha Préstamo</th>
@@ -59,33 +113,95 @@
                             <th>Plazo</th>
                             <th>Fecha Vencimiento</th>
                             <th>Saldo</th>
+                            <th>Liquida Con</th>
                             <th>Puede Solicitar</th>
                             <th>Importe Líquido</th>
                             <th>Descuento</th>
-                            <th>Liquida Con</th>
                         </tr>
                     </thead>
                     <tbody>
-                        @foreach (var item in Model.Reporte)
+                        @foreach (var item in Model.Resultado.PrestamosNoPersonales)
                         {
                             <tr>
-                                <td>@item.ClavePension</td>
                                 <td>@item.ClavePrestamo</td>
                                 <td>@item.SubClave</td>
                                 <td>@item.NombrePrestamo</td>
-                                <td>@(item.FechaPrestamo?.ToString("dd/MM/yyyy") ?? "")</td>
+                                <td>@item.FechaPrestamo?.ToString("dd/MM/yyyy")</td>
                                 <td>@item.ImportePrestamo.ToString("N2")</td>
                                 <td>@item.PlazoMeses</td>
-                                <td>@(item.FechaVencimiento?.ToString("dd/MM/yyyy") ?? "")</td>
+                                <td>@item.FechaVencimiento?.ToString("dd/MM/yyyy")</td>
                                 <td>@item.SaldoPrestamo.ToString("N2")</td>
+                                <td>@item.LiquidaCon.ToString("N2")</td>
                                 <td>@item.CantidadPuedeSolicitar.ToString("N2")</td>
                                 <td>@item.ImporteLiquido.ToString("N2")</td>
                                 <td>@item.Descuento.ToString("N2")</td>
-                                <td>@item.LiquidaCon.ToString("N2")</td>
                             </tr>
                         }
                     </tbody>
                 </table>
+            </div>
+        }
+
+        @if (Model.Resultado?.ResumenPrestamoPersonal != null)
+        {
+            <h4 class="mb-3">3. Información de Préstamo Personal</h4>
+
+            <div class="card mb-3">
+                <div class="card-body">
+                    <p><strong>Tiene préstamo vigente:</strong> @(Model.Resultado.ResumenPrestamoPersonal.TienePrestamoVigente ? "Sí" : "No")</p>
+                    <p><strong>Puede renovar:</strong> @(Model.Resultado.ResumenPrestamoPersonal.PuedeRenovar ? "Sí" : "No")</p>
+                    <p><strong>Cumple pago:</strong> @(Model.Resultado.ResumenPrestamoPersonal.CumplePago ? "Sí" : "No")</p>
+                    <p><strong>Cumple plazo:</strong> @(Model.Resultado.ResumenPrestamoPersonal.CumplePlazo ? "Sí" : "No")</p>
+                    <p><strong>Días faltantes:</strong> @Model.Resultado.ResumenPrestamoPersonal.DiasFaltantes</p>
+                    <p><strong>Monto faltante para renovar:</strong> @Model.Resultado.ResumenPrestamoPersonal.MontoFaltanteParaRenovar.ToString("N2")</p>
+                    <p><strong>Saldo préstamo activo:</strong> @Model.Resultado.ResumenPrestamoPersonal.SaldoPrestamoActivo.ToString("N2")</p>
+                    <p><strong>Liquida con préstamo activo:</strong> @Model.Resultado.ResumenPrestamoPersonal.LiquidaConPrestamoActivo.ToString("N2")</p>
+                    <p><strong>Mensaje:</strong> @Model.Resultado.ResumenPrestamoPersonal.MensajeResultado</p>
+                </div>
+            </div>
+        }
+
+        @if (Model.Resultado != null && Model.Resultado.PrestamosPersonales.Any())
+        {
+            <div class="table-responsive mb-4">
+                <table class="table table-bordered table-hover table-sm align-middle">
+                    <thead class="table-secondary">
+                        <tr>
+                            <th>Clave</th>
+                            <th>Subclave</th>
+                            <th>Nombre Préstamo</th>
+                            <th>Puede Solicitar</th>
+                            <th>Importe Líquido</th>
+                            <th>Descuento</th>
+                            <th>Plazo Meses</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var item in Model.Resultado.PrestamosPersonales)
+                        {
+                            <tr>
+                                <td>@item.ClavePrestamo</td>
+                                <td>@item.SubClave</td>
+                                <td>@item.NombrePrestamo</td>
+                                <td>@item.CantidadPuedeSolicitar.ToString("N2")</td>
+                                <td>@item.ImporteLiquido.ToString("N2")</td>
+                                <td>@item.Descuento.ToString("N2")</td>
+                                <td>@item.PlazoMeses</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+
+        @if (Model.Resultado != null
+                && !Model.Resultado.PrestamosNoPersonales.Any()
+                && !Model.Resultado.PrestamosPersonales.Any()
+                && Model.Resultado.ResumenPrestamoPersonal == null
+                && !string.IsNullOrWhiteSpace(Model.Pension))
+        {
+            <div class="alert alert-warning">
+                No se encontraron resultados para la pensión capturada.
             </div>
         }
     </div>

@@ -152,6 +152,19 @@
         /// Equivale a SDOPRESTAMOPP.
         /// </summary>
         public decimal SdoPrestamoPP { get; set; }
+
+        /// <summary>
+        /// Indica si la operación actual corresponde a una solicitud especial.
+        /// Se usa para exceptuar el tope global de 3.5 veces ahorro.
+        /// </summary>
+        public bool EsSolicitudEspecial { get; set; }
+
+        /// <summary>
+        /// Saldo acumulado de los préstamos vigentes que sí participan
+        /// en el tope global de 3.5 veces los ahorros.
+        /// Ejemplo: PP, PR, RE, ES y PC.
+        /// </summary>
+        public decimal SaldoPrestamosTopadosAhorro { get; set; }
     }
 }
 

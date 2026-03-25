@@ -73,5 +73,26 @@
         /// Monto estimado para liquidar o renovar el préstamo actual.
         /// </summary>
         public decimal LiquidaCon { get; set; }
+
+        /// <summary>
+        /// Indica si actualmente existe un préstamo vigente para este tipo/subclave.
+        /// </summary>
+        public bool TienePrestamoVigente { get; set; }
+
+        /// <summary>
+        /// Estatus resumido de la fila.
+        /// Ejemplos: VIGENTE, DISPONIBLE, SIN_ALCANCE.
+        /// </summary>
+        public string EstatusFila { get; set; } = string.Empty;
+
+        /// <summary>
+        /// Texto auxiliar u observaciones de negocio para mostrar en la fila.
+        /// </summary>
+        public string Observaciones { get; set; } = string.Empty;
+
+        /// <summary>
+        /// Orden de despliegue de la fila en el estado de cuenta.
+        /// </summary>
+        public int Orden { get; set; }
     }
 }
