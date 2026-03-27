@@ -48,8 +48,8 @@ else
                         <td>@item.SaldoPrestamo.ToString("N2")</td>
                         <td>@item.CantidadPuedeSolicitar.ToString("N2")</td>
                         <td>@item.ImporteLiquido.ToString("N2")</td>
-                        <td>@item.Descuento.ToString("N2")</td>
-                        <td>@item.LiquidaCon.ToString("N2")</td>
+                        <td>@item.Descuento.GetValueOrDefault().ToString("N2")</td>
+                        <td>@item.LiquidaCon.GetValueOrDefault().ToString("N2")</td>
                     </tr>
                 }
             </tbody>

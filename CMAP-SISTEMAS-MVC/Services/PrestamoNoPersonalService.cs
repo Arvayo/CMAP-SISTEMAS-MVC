@@ -47,7 +47,7 @@ namespace CMAP_SISTEMAS_MVC.Services
                 contexto.ClavePension,
                 contexto.FechaSistema);
 
-            var resultado = new List<EstadoCuentaRowsDto>(tiposPrestamo.Count);
+            var resultado = new List<EstadoCuentaRowsDto>();
 
             foreach (var tipo in tiposPrestamo)
             {
@@ -55,9 +55,169 @@ namespace CMAP_SISTEMAS_MVC.Services
                 resultado.Add(fila);
             }
 
-            return resultado;
+            AgregarFilasProyectadas(contexto, resultado, prestamosVigentes);
+
+            return resultado
+                .OrderBy(x => x.OrdenVisual)
+                .ThenBy(x => x.SubClave)
+                .ToList();
         }
 
+        /* ============================================================
+         * API PÚBLICA
+         * ============================================================ */
+        private void AgregarFilasProyectadas(
+        EstadoCuentaContextDto ctx,
+        List<EstadoCuentaRowsDto> resultado,
+        List<PrestamoVigenteDto> vigentes)
+        {
+            AgregarFilaSiNoExiste(resultado, CrearFilaProyectada(ctx, "ES", 0, "EVENTOS SOCIALES", 30, 30000m));
+
+            AgregarFilaSiNoExiste(resultado, CrearFilaProyectada(ctx, "PR", 0, "PRENDARIO NORMAL", 15, 15000m));
+            AgregarFilaSiNoExiste(resultado, CrearFilaProyectada(ctx, "PR", 1, "PRENDARIO TIPO A", 15, 20000m));
+            AgregarFilaSiNoExiste(resultado, CrearFilaProyectada(ctx, "PR", 2, "PRENDARIO TIPO B", 24, 30000m));
+        }
+
+        /* ============================================================
+         * API PÚBLICA
+         * ============================================================ */
+        private void AgregarFilaSiNoExiste(
+        List<EstadoCuentaRowsDto> resultado,
+        EstadoCuentaRowsDto nuevaFila)
+        {
+            bool existe = resultado.Any(x =>
+                x.ClavePrestamo == nuevaFila.ClavePrestamo &&
+                NormalizarSubClave(x.ClavePrestamo, x.SubClave) == NormalizarSubClave(nuevaFila.ClavePrestamo, nuevaFila.SubClave));
+
+            if (!existe)
+            {
+                resultado.Add(nuevaFila);
+            }
+        }
+
+        private int NormalizarSubClave(string clavePrestamo, int? subClave)
+        {
+            if (clavePrestamo == "PR")
+                return subClave ?? 0;
+
+            return subClave ?? 0;
+        }
+
+        /* ============================================================
+         * API PÚBLICA
+         * ============================================================ */
+        private EstadoCuentaRowsDto CrearFilaProyectada(
+        EstadoCuentaContextDto ctx,
+        string clavePrestamo,
+        int subClave,
+        string nombrePrestamo,
+            int plazoMeses,
+        decimal importeLiquido)
+        {
+            decimal vecesAhorro = ObtenerVecesAhorroProyeccion(clavePrestamo, subClave);
+
+            decimal topePorAhorros = _prestamoCalculatorService.CalcularTopePorAhorros(
+                ctx.MisAhorros,
+                vecesAhorro);
+
+            decimal puedeSolicitar = topePorAhorros;
+
+            if (puedeSolicitar < 0)
+                puedeSolicitar = 0;
+
+            if (importeLiquido > puedeSolicitar)
+                importeLiquido = puedeSolicitar;
+
+            decimal descuento = CalcularDescuentoProyeccion(
+                clavePrestamo,
+                subClave,
+                importeLiquido,
+                plazoMeses);
+
+            return new EstadoCuentaRowsDto
+            {
+                IdReporte = ctx.IdReporte,
+                ClavePension = ctx.ClavePension,
+
+                ClavePrestamo = clavePrestamo,
+                SubClave = subClave,
+                NombrePrestamo = nombrePrestamo,
+
+                FechaPrestamo = null,
+                ImportePrestamo = 0m,
+                PlazoMeses = plazoMeses,
+                FechaVencimiento = null,
+
+                SaldoPrestamo = 0m,
+                CantidadPuedeSolicitar = puedeSolicitar,
+
+                ImporteLiquido = ObtenerImporteLiquidoBase(clavePrestamo, subClave),
+                Descuento = descuento,
+                LiquidaCon = 0m,
+
+                EstaVigente = false,
+                EsProyeccion = true,
+                OrdenVisual = ObtenerOrdenVisual(clavePrestamo, subClave)
+            };
+        }
+
+        private decimal ObtenerImporteLiquidoBase(string clavePrestamo, int? subClave)
+        {
+            return (clavePrestamo, subClave) switch
+            {
+                ("PR", null) => 15000m,
+                ("PR", 0) => 15000m,
+                ("PR", 1) => 20000m,
+                ("PR", 2) => 30000m,
+                ("ES", _) => 30000m,
+                _ => 0m
+            };
+        }
+
+        private decimal CalcularImporteLiquidoFila(
+        string clavePrestamo,
+        int? subClave,
+        bool estaVigente)
+        {
+            return (clavePrestamo, subClave, estaVigente) switch
+            {
+                ("PR", null, false) => 15000m,
+                ("PR", 0, false) => 15000m,
+                ("PR", 1, false) => 20000m,
+                ("PR", 2, false) => 30000m,
+                _ => 0m
+            };
+        }
+
+        private decimal CalcularDescuentoProyeccion(
+        string clavePrestamo,
+        int subClave,
+        decimal importeLiquido,
+        int plazoMeses)
+        {
+            if (importeLiquido <= 0 || plazoMeses <= 0)
+                return 0m;
+
+            return (clavePrestamo, subClave) switch
+            {
+                ("ES", 0) => Math.Round(importeLiquido / plazoMeses, 2),
+                ("PR", 0) => 0m,
+                ("PR", 1) => 0m,
+                ("PR", 2) => 0m,
+                _ => 0m
+            };
+        }
+        private decimal ObtenerVecesAhorroProyeccion(string clavePrestamo, int subClave)
+        {
+            return (clavePrestamo, subClave) switch
+            {
+                ("ES", 0) => 3.5m,
+                ("PR", 0) => 3.5m,
+                ("PR", 1) => 3.5m,
+                ("PR", 2) => 3.5m,
+                _ => 3.5m
+            };
+        }
         /* ============================================================
          * SECCIÓN B: TIPOS DE PRÉSTAMO (TP + DP)
          * ============================================================ */
@@ -66,12 +226,10 @@ namespace CMAP_SISTEMAS_MVC.Services
             var query =
                 from tp in _context.TABLA_DE_TIPOS_DE_PRESTAMOS.AsNoTracking()
                 join dp in _context.DETALLE_DE_TIPOS_DE_PRESTAMOS.AsNoTracking()
-                    on tp.ClavePrestamo equals dp.ClavePrestamo
+                     on tp.ClavePrestamo equals dp.ClavePrestamo
                 where dp.TipoSocio == ctx.Estatus
-                      && dp.Vigencia == ctx.Vigencia
-                      && tp.ClavePrestamo != "IC"
-                     
-
+                        && dp.Vigencia == ctx.Vigencia
+                        && tp.ClavePrestamo != "IC"
                 select new TipoPrestamoDto
                 {
                     ClavePrestamo = tp.ClavePrestamo ?? string.Empty,
@@ -92,18 +250,23 @@ namespace CMAP_SISTEMAS_MVC.Services
                     PorcenFondoGarantia = dp.PorcenFondoGarantia ?? 0,
                     FactorSobreAhorro = dp.FactorSobreAhorro ?? 0,
                     MesesMinCotizados = dp.MesesMinCotizados ?? 0
-                };
+               };
 
             if (ctx.SoloPrestamoGM)
             {
                 query = query.Where(x => x.ClavePrestamo == "GM");
             }
 
-            return await query
-                .OrderBy(x => x.ClavePrestamo)
-                .ThenBy(x => x.PlazoMaximo)
-                .ThenBy(x => x.TasaIntNormal)
-                .ToListAsync();
+            var lista = await query.ToListAsync();
+
+            var orden = new[] { "ES", "PC", "PP", "PR", "RE", "VI" };
+
+            return lista
+                .Where(x => orden.Contains(x.ClavePrestamo))
+                .GroupBy(x => x.ClavePrestamo)
+                .Select(g => g.First())
+                .OrderBy(x => Array.IndexOf(orden, x.ClavePrestamo))
+                .ToList();
         }
 
         /* ============================================================
@@ -176,9 +339,9 @@ namespace CMAP_SISTEMAS_MVC.Services
          * SECCIÓN D: CONSTRUCCIÓN DE FILAS
          * ============================================================ */
         private EstadoCuentaRowsDto ConstruirFilaPorTipo(
-            EstadoCuentaContextDto ctx,
-            TipoPrestamoDto tipo,
-            List<PrestamoVigenteDto> vigentes)
+        EstadoCuentaContextDto ctx,
+        TipoPrestamoDto tipo,
+        List<PrestamoVigenteDto> vigentes)
         {
             var prestamosDelTipo = vigentes
                 .Where(p => p.TipoPrestamo == tipo.ClavePrestamo)
@@ -221,14 +384,22 @@ namespace CMAP_SISTEMAS_MVC.Services
                     prestamoPrincipal.ImporteAmortizacion);
             }
 
+            bool estaVigente = prestamoPrincipal != null;
+            bool esProyeccion = !estaVigente;
+
+            decimal importeLiquido = CalcularImporteLiquidoFila(
+                tipo.ClavePrestamo,
+                prestamoPrincipal?.SubCve,
+                estaVigente);
+
             return new EstadoCuentaRowsDto
             {
                 IdReporte = ctx.IdReporte,
                 ClavePension = ctx.ClavePension,
 
                 ClavePrestamo = tipo.ClavePrestamo,
-                SubClave = tipo.SubCve,
-                NombrePrestamo = tipo.NombrePrestamo,
+                SubClave = prestamoPrincipal?.SubCve ?? 0,
+                NombrePrestamo = ObtenerNombreVisible(tipo.ClavePrestamo, prestamoPrincipal?.SubCve),
 
                 FechaPrestamo = fechaPrestamo,
                 ImportePrestamo = importeTotal,
@@ -238,9 +409,55 @@ namespace CMAP_SISTEMAS_MVC.Services
                 SaldoPrestamo = saldoTotal,
                 CantidadPuedeSolicitar = puedeSolicitar,
 
-                ImporteLiquido = 0,
+                ImporteLiquido = importeLiquido,
                 Descuento = descuento,
-                LiquidaCon = liquidaCon
+                LiquidaCon = liquidaCon,
+
+                EstaVigente = estaVigente,
+                EsProyeccion = esProyeccion,
+                OrdenVisual = ObtenerOrdenVisual(tipo.ClavePrestamo, prestamoPrincipal?.SubCve)
+            };
+        }
+
+        private string ObtenerNombreVisible(string clavePrestamo, int? subClave)
+        {
+            return (clavePrestamo, subClave) switch
+            {
+                ("PC", _) => "COMPLEMENTARIO",
+                ("ES", _) => "EVENTOS SOCIALES",
+                ("PP", _) => "PRÉSTAMO PERSONAL",
+
+                // Muy importante:
+                ("PR", 0) => "PRENDARIO NORMAL",
+                ("PR", null) => "PRENDARIO NORMAL",
+                ("PR", 1) => "PRENDARIO TIPO A",
+                ("PR", 2) => "PRENDARIO TIPO B",
+
+                ("RE", _) => "PRÉSTAMO REFACCIONAR",
+                ("VA", _) => "VIAJES T.",
+                ("VI", _) => "VIAJES T.",
+
+                _ => clavePrestamo
+            };
+        }
+
+        private int ObtenerOrdenVisual(string clavePrestamo, int? subClave)
+        {
+            return (clavePrestamo, subClave) switch
+            {
+                ("PC", _) => 1,
+                ("ES", _) => 2,
+                ("PP", _) => 3,
+
+                ("PR", null) => 4,
+                ("PR", 0) => 4,
+                ("PR", 1) => 5,
+                ("PR", 2) => 6,
+
+                ("RE", _) => 7,
+                ("VA", _) => 8,
+                ("VI", _) => 8,
+                _ => 99
             };
         }
     }

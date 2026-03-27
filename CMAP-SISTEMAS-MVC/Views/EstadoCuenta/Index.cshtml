@@ -105,9 +105,7 @@
                 <table class="table table-bordered table-hover table-sm align-middle">
                     <thead class="table-dark">
                         <tr>
-                            <th>Clave</th>
-                            <th>Subclave</th>
-                            <th>Nombre Préstamo</th>
+                            <th>Préstamo</th>
                             <th>Fecha Préstamo</th>
                             <th>Importe</th>
                             <th>Plazo</th>
@@ -123,18 +121,16 @@
                         @foreach (var item in Model.Resultado.PrestamosNoPersonales)
                         {
                             <tr>
-                                <td>@item.ClavePrestamo</td>
-                                <td>@item.SubClave</td>
                                 <td>@item.NombrePrestamo</td>
-                                <td>@item.FechaPrestamo?.ToString("dd/MM/yyyy")</td>
+                                <td>@(item.FechaPrestamo?.ToString("dd/MM/yyyy") ?? "")</td>
                                 <td>@item.ImportePrestamo.ToString("N2")</td>
                                 <td>@item.PlazoMeses</td>
-                                <td>@item.FechaVencimiento?.ToString("dd/MM/yyyy")</td>
+                                <td>@(item.FechaVencimiento?.ToString("dd/MM/yyyy") ?? "")</td>
                                 <td>@item.SaldoPrestamo.ToString("N2")</td>
-                                <td>@item.LiquidaCon.ToString("N2")</td>
+                                <td>@item.LiquidaCon.GetValueOrDefault().ToString("N2")</td>
                                 <td>@item.CantidadPuedeSolicitar.ToString("N2")</td>
                                 <td>@item.ImporteLiquido.ToString("N2")</td>
-                                <td>@item.Descuento.ToString("N2")</td>
+                                <td>@item.Descuento.GetValueOrDefault().ToString("N2")</td>
                             </tr>
                         }
                     </tbody>
@@ -185,7 +181,7 @@
                                 <td>@item.NombrePrestamo</td>
                                 <td>@item.CantidadPuedeSolicitar.ToString("N2")</td>
                                 <td>@item.ImporteLiquido.ToString("N2")</td>
-                                <td>@item.Descuento.ToString("N2")</td>
+                                <td>@item.Descuento.GetValueOrDefault().ToString("N2")</td>
                                 <td>@item.PlazoMeses</td>
                             </tr>
                         }

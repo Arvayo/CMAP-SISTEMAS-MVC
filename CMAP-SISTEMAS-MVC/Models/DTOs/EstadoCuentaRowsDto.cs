@@ -16,12 +16,12 @@
         /// Clave del tipo de préstamo.
         /// Ejemplo: PP, ES, EX, GM, VA, etc.
         /// </summary>
-        public string ClavePrestamo { get; set; } = string.Empty;
+        public string ClavePrestamo { get; set; } = string.Empty;  // interna
 
         /// <summary>
         /// Subclave del préstamo, si aplica.
         /// </summary>
-        public int? SubClave { get; set; }
+        public int? SubClave { get; set; }                         // interna
 
         /// <summary>
         /// Nombre descriptivo del préstamo.
@@ -67,12 +67,12 @@
         /// <summary>
         /// Descuento o amortización estimada por periodo.
         /// </summary>
-        public decimal Descuento { get; set; }
+        public decimal? Descuento { get; set; }
 
         /// <summary>
         /// Monto estimado para liquidar o renovar el préstamo actual.
         /// </summary>
-        public decimal LiquidaCon { get; set; }
+        public decimal? LiquidaCon { get; set; }
 
         /// <summary>
         /// Indica si actualmente existe un préstamo vigente para este tipo/subclave.
@@ -94,5 +94,24 @@
         /// Orden de despliegue de la fila en el estado de cuenta.
         /// </summary>
         public int Orden { get; set; }
+
+        /// <summary>
+        /// Orden para mostrar en la tabla (como en VB).
+        /// </summary>
+        public int OrdenVisual { get; set; }
+
+        /// <summary>
+        /// Importe líquido proyectado (cuando aplica).
+        /// </summary>
+       
+        /// <summary>
+        /// Indica si la fila es una proyección (no existe préstamo real).
+        /// </summary>
+        public bool EsProyeccion { get; set; }
+
+        /// <summary>
+        /// Indica si el préstamo está vigente.
+        /// </summary>
+        public bool EstaVigente { get; set; }
     }
 }
