@@ -163,8 +163,8 @@
                 <table class="table table-bordered table-hover table-sm align-middle">
                     <thead class="table-secondary">
                         <tr>
-                            <th>Clave</th>
-                            <th>Subclave</th>
+                            <!--<th>Clave</th>-->
+                            <!--<th>Subclave</th>-->
                             <th>Nombre Préstamo</th>
                             <th>Puede Solicitar</th>
                             <th>Importe Líquido</th>
@@ -176,8 +176,8 @@
                         @foreach (var item in Model.Resultado.PrestamosPersonales)
                         {
                             <tr>
-                                <td>@item.ClavePrestamo</td>
-                                <td>@item.SubClave</td>
+                                <!-- <td>@item.ClavePrestamo</td> -->
+                                <!-- <td>@item.SubClave</td>  -->
                                 <td>@item.NombrePrestamo</td>
                                 <td>@item.CantidadPuedeSolicitar.ToString("N2")</td>
                                 <td>@item.ImporteLiquido.ToString("N2")</td>

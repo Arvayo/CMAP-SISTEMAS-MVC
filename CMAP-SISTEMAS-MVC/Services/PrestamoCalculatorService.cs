@@ -54,6 +54,37 @@ namespace CMAP_SISTEMAS_MVC.Services
         /// SaldoPrestamo = 7,000
         /// Resultado = 30 (%)
         /// </summary>
+        /// 
+        public decimal CalcularImporteLiquidoProyectado(
+        decimal importePagare,
+        int plazoMeses,
+        decimal tasaIntNormal,
+        decimal porcenSeguroPasivo,
+        decimal porcenFondoGarantia,
+        bool esLiquido)
+        {
+            if (importePagare <= 0)
+                return 0m;
+
+            if (esLiquido)
+                return Math.Round(importePagare, 2);
+
+            decimal interes = importePagare * (tasaIntNormal / 100m);
+            decimal seguro = importePagare * (porcenSeguroPasivo / 100m);
+            decimal fondo = importePagare * (porcenFondoGarantia / 100m);
+
+            decimal liquido = importePagare - interes - seguro - fondo;
+
+            return liquido < 0 ? 0m : Math.Round(liquido, 2);
+        }
+
+        public decimal CalcularDescuentoProyectado(decimal importePagare, int plazoMeses, decimal tasa)
+        {
+            if (importePagare <= 0 || plazoMeses <= 0)
+                return 0m;
+
+            return Math.Round(importePagare / plazoMeses, 2);
+        }
         public decimal CalcularPorcentajeCubierto(decimal importePagare, decimal saldoPrestamo)
         {
             if (importePagare <= 0)

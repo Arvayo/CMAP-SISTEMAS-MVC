@@ -14,6 +14,7 @@ namespace CMAP_SISTEMAS_MVC.Services
     ///  - obtener tipos de préstamo
     ///  - obtener préstamos vigentes
     ///  - construir filas del estado de cuenta
+    ///  - generar proyecciones temporales
     /// ============================================================
     /// </summary>
     public class PrestamoNoPersonalService : IPrestamoNoPersonalService
@@ -52,6 +53,8 @@ namespace CMAP_SISTEMAS_MVC.Services
             foreach (var tipo in tiposPrestamo)
             {
                 var fila = ConstruirFilaPorTipo(contexto, tipo, prestamosVigentes);
+
+                if (fila != null)
                 resultado.Add(fila);
             }
 
@@ -64,75 +67,175 @@ namespace CMAP_SISTEMAS_MVC.Services
         }
 
         /* ============================================================
-         * API PÚBLICA
+         * SECCIÓN A: CONSTRUCCIÓN DE FILAS
          * ============================================================ */
-        private void AgregarFilasProyectadas(
+        private EstadoCuentaRowsDto? ConstruirFilaPorTipo(
         EstadoCuentaContextDto ctx,
-        List<EstadoCuentaRowsDto> resultado,
+        TipoPrestamoDto tipo,
         List<PrestamoVigenteDto> vigentes)
         {
-            AgregarFilaSiNoExiste(resultado, CrearFilaProyectada(ctx, "ES", 0, "EVENTOS SOCIALES", 30, 30000m));
+            var prestamosDelTipo = vigentes
+                .Where(p =>
+                    p.TipoPrestamo == tipo.ClavePrestamo &&
+                    (p.SubCve ?? 0) == (tipo.SubCve ?? 0))
+                .ToList();
 
-            AgregarFilaSiNoExiste(resultado, CrearFilaProyectada(ctx, "PR", 0, "PRENDARIO NORMAL", 15, 15000m));
-            AgregarFilaSiNoExiste(resultado, CrearFilaProyectada(ctx, "PR", 1, "PRENDARIO TIPO A", 15, 20000m));
-            AgregarFilaSiNoExiste(resultado, CrearFilaProyectada(ctx, "PR", 2, "PRENDARIO TIPO B", 24, 30000m));
-        }
-
-        /* ============================================================
-         * API PÚBLICA
-         * ============================================================ */
-        private void AgregarFilaSiNoExiste(
-        List<EstadoCuentaRowsDto> resultado,
-        EstadoCuentaRowsDto nuevaFila)
-        {
-            bool existe = resultado.Any(x =>
-                x.ClavePrestamo == nuevaFila.ClavePrestamo &&
-                NormalizarSubClave(x.ClavePrestamo, x.SubClave) == NormalizarSubClave(nuevaFila.ClavePrestamo, nuevaFila.SubClave));
-
-            if (!existe)
+            // Para PP, si por alguna razón existen varios vigentes, tomamos el más reciente.
+            if (tipo.ClavePrestamo == "PP" && prestamosDelTipo.Any())
             {
-                resultado.Add(nuevaFila);
+                prestamosDelTipo = prestamosDelTipo
+                    .OrderByDescending(x => x.FechaPrestamo ?? DateTime.MinValue)
+                    .Take(1)
+                    .ToList();
             }
-        }
 
-        private int NormalizarSubClave(string clavePrestamo, int? subClave)
-        {
-            if (clavePrestamo == "PR")
-                return subClave ?? 0;
+            decimal saldoTotal = prestamosDelTipo.Sum(x => x.SaldoPrestamo);
+            decimal importeTotal = prestamosDelTipo.Sum(x => x.ImportePagare);
 
-            return subClave ?? 0;
+            var prestamoPrincipal = prestamosDelTipo
+                .OrderByDescending(x => x.FechaPrestamo ?? DateTime.MinValue)
+                .FirstOrDefault();
+
+            decimal liquidaCon = prestamoPrincipal?.LiquidaCon ?? 0m;
+            DateTime? fechaPrestamo = prestamoPrincipal?.FechaPrestamo;
+            DateTime? fechaVencimiento = prestamoPrincipal?.FechaVencimiento;
+
+            bool estaVigente = prestamoPrincipal != null;
+            bool realizarProyeccion = !estaVigente && tipo.Vigente == "S";
+            bool esProyeccion = realizarProyeccion;
+
+            if (!estaVigente && !realizarProyeccion)
+            {
+                return null;
+            }
+
+            decimal descuento = 0m;
+
+            if (prestamoPrincipal != null)
+            {
+                descuento = _prestamoCalculatorService.CalcularDescuento(
+                    prestamoPrincipal.SaldoPrestamo,
+                    prestamoPrincipal.ImporteAmortizacion);
+            }
+
+            var (puedeSolicitar, importeLiquido) = CalcularAlcanceNoPersonal(
+                ctx,
+                tipo,
+                saldoTotal,
+                tipo.PlazoMaximo);
+
+            // Si existe préstamo vigente, no proyectamos líquido nuevo
+            if (estaVigente)
+            {
+                importeLiquido = 0m;
+            }
+
+            int subClave = prestamoPrincipal?.SubCve ?? tipo.SubCve ?? 0;
+
+            return new EstadoCuentaRowsDto
+            {
+                IdReporte = ctx.IdReporte,
+                ClavePension = ctx.ClavePension,
+
+                ClavePrestamo = tipo.ClavePrestamo,
+                SubClave = subClave,
+                NombrePrestamo = ObtenerNombreVisible(tipo.ClavePrestamo, subClave),
+
+                FechaPrestamo = fechaPrestamo,
+                ImportePrestamo = importeTotal,
+                PlazoMeses = tipo.PlazoMaximo,
+                FechaVencimiento = fechaVencimiento,
+
+                SaldoPrestamo = saldoTotal,
+                CantidadPuedeSolicitar = puedeSolicitar,
+
+                ImporteLiquido = importeLiquido,
+                Descuento = descuento,
+                LiquidaCon = liquidaCon,
+
+                EstaVigente = estaVigente,
+                EsProyeccion = esProyeccion,
+                OrdenVisual = ObtenerOrdenVisual(tipo.ClavePrestamo, subClave)
+            };
         }
 
         /* ============================================================
-         * API PÚBLICA
+         * SECCIÓN B: PROYECCIONES
          * ============================================================ */
-        private EstadoCuentaRowsDto CrearFilaProyectada(
-        EstadoCuentaContextDto ctx,
-        string clavePrestamo,
-        int subClave,
-        string nombrePrestamo,
-            int plazoMeses,
-        decimal importeLiquido)
+        private void AgregarFilasProyectadas(
+            EstadoCuentaContextDto ctx,
+            List<EstadoCuentaRowsDto> resultado,
+            List<PrestamoVigenteDto> vigentes)
         {
-            decimal vecesAhorro = ObtenerVecesAhorroProyeccion(clavePrestamo, subClave);
+            // 1) Especial = ES
+            AgregarFilaSiNoExiste(resultado,
+                CrearFilaProyectada(ctx, "ES", 0, "ESPECIAL", 3, 8500.00m, 0m, 0m, 0m));
 
-            decimal topePorAhorros = _prestamoCalculatorService.CalcularTopePorAhorros(
-                ctx.MisAhorros,
-                vecesAhorro);
+            // 2) Eventos Sociales = EV
+            AgregarFilaSiNoExiste(resultado,
+                CrearFilaProyectada(ctx, "EV", 0, "EVENTOS SOCIALES", 30, 35444.23m, 0m, 0m, 0m));
 
-            decimal puedeSolicitar = topePorAhorros;
+            // 3) Personal = PP (solo como fila general en esta sección)
+            AgregarFilaSiNoExiste(resultado,
+                CrearFilaProyectada(ctx, "PP", 0, "PRÉSTAMO PERSONAL", 15, 0m, 0m, 0m, 0m));
 
-            if (puedeSolicitar < 0)
-                puedeSolicitar = 0;
+            // 4) Prendarios
+            AgregarFilaSiNoExiste(resultado,
+                CrearFilaProyectada(ctx, "PR", 0, "PRENDARIO NORMAL", 15, 16501.23m, 0m, 0m, 0m));
 
-            if (importeLiquido > puedeSolicitar)
-                importeLiquido = puedeSolicitar;
+            AgregarFilaSiNoExiste(resultado,
+                CrearFilaProyectada(ctx, "PR", 1, "PRENDARIO TIPO A", 15, 22001.64m, 0m, 0m, 0m));
 
-            decimal descuento = CalcularDescuentoProyeccion(
-                clavePrestamo,
-                subClave,
-                importeLiquido,
+            AgregarFilaSiNoExiste(resultado,
+                CrearFilaProyectada(ctx, "PR", 2, "PRENDARIO TIPO B", 24, 34454.03m, 0m, 0m, 0m));
+
+            // 5) Refaccionario
+            AgregarFilaSiNoExiste(resultado,
+                CrearFilaProyectada(ctx, "RE", 0, "PRÉSTAMO REFACCIONAR", 15, 11000.82m, 0m, 0m, 0m));
+
+            // 6) Viajes
+            AgregarFilaSiNoExiste(resultado,
+                CrearFilaProyectada(ctx, "VI", 0, "VIAJES T.", 15, 11000.82m, 0m, 0m, 0m));
+        }
+
+        private EstadoCuentaRowsDto CrearFilaProyectada(
+            EstadoCuentaContextDto ctx,
+            string clavePrestamo,
+            int subClave,
+            string nombrePrestamo,
+            int plazoMeses,
+            decimal montoMaximo,
+            decimal tasa,
+            decimal seguro,
+            decimal fondo)
+        {
+            var tipoTemp = new TipoPrestamoDto
+            {
+                ClavePrestamo = clavePrestamo,
+                SubCve = subClave,
+                NombrePrestamo = nombrePrestamo,
+                PlazoMaximo = plazoMeses,
+                MontoMaximo = montoMaximo,
+                TasaIntNormal = tasa,
+                PorcenSeguroPasivo = seguro,
+                PorcenFondoGarantia = fondo,
+                VecesAhorro = 3.5m,
+                Vigente = "S",
+                MesesMinCotizados = 6
+            };
+
+            var (puedeSolicitar, importeLiquido) = CalcularAlcanceNoPersonal(
+                ctx,
+                tipoTemp,
+                0m,
                 plazoMeses);
+
+            decimal descuento = 0m;
+
+            if (plazoMeses > 0)
+            {
+                descuento = Math.Round(puedeSolicitar / plazoMeses, 2);
+            }
 
             return new EstadoCuentaRowsDto
             {
@@ -151,7 +254,7 @@ namespace CMAP_SISTEMAS_MVC.Services
                 SaldoPrestamo = 0m,
                 CantidadPuedeSolicitar = puedeSolicitar,
 
-                ImporteLiquido = ObtenerImporteLiquidoBase(clavePrestamo, subClave),
+                ImporteLiquido = importeLiquido,
                 Descuento = descuento,
                 LiquidaCon = 0m,
 
@@ -161,75 +264,140 @@ namespace CMAP_SISTEMAS_MVC.Services
             };
         }
 
-        private decimal ObtenerImporteLiquidoBase(string clavePrestamo, int? subClave)
+        private void AgregarFilaSiNoExiste(
+            List<EstadoCuentaRowsDto> resultado,
+            EstadoCuentaRowsDto nuevaFila)
         {
-            return (clavePrestamo, subClave) switch
+            bool existe = resultado.Any(x =>
+                x.ClavePrestamo == nuevaFila.ClavePrestamo &&
+                NormalizarSubClave(x.ClavePrestamo, x.SubClave) ==
+                NormalizarSubClave(nuevaFila.ClavePrestamo, nuevaFila.SubClave));
+
+            if (!existe)
             {
-                ("PR", null) => 15000m,
-                ("PR", 0) => 15000m,
-                ("PR", 1) => 20000m,
-                ("PR", 2) => 30000m,
-                ("ES", _) => 30000m,
-                _ => 0m
-            };
+                resultado.Add(nuevaFila);
+            }
         }
 
-        private decimal CalcularImporteLiquidoFila(
-        string clavePrestamo,
-        int? subClave,
-        bool estaVigente)
+        private int NormalizarSubClave(string clavePrestamo, int? subClave)
         {
-            return (clavePrestamo, subClave, estaVigente) switch
-            {
-                ("PR", null, false) => 15000m,
-                ("PR", 0, false) => 15000m,
-                ("PR", 1, false) => 20000m,
-                ("PR", 2, false) => 30000m,
-                _ => 0m
-            };
+            return subClave ?? 0;
         }
 
-        private decimal CalcularDescuentoProyeccion(
-        string clavePrestamo,
-        int subClave,
-        decimal importeLiquido,
-        int plazoMeses)
+        /* ============================================================
+         * SECCIÓN C: CÁLCULO DE ALCANCE
+         * ============================================================ */
+        private (decimal puedeSolicitar, decimal importeLiquido) CalcularAlcanceNoPersonal(
+            EstadoCuentaContextDto ctx,
+            TipoPrestamoDto tipo,
+            decimal saldoActualDelTipo,
+            int plazoMeses)
         {
-            if (importeLiquido <= 0 || plazoMeses <= 0)
+            if (tipo.Vigente != "S")
+                return (0m, 0m);
+
+            if (tipo.MesesMinCotizados > 0 && ctx.MesesCot < tipo.MesesMinCotizados)
+                return (0m, 0m);
+
+            decimal topeGlobalDisponible;
+
+            if (ctx.EsSolicitudEspecial)
+            {
+                topeGlobalDisponible = decimal.MaxValue;
+            }
+            else
+            {
+                decimal topeGlobal = _prestamoCalculatorService
+                    .CalcularTopePorAhorros(ctx.MisAhorros, 3.5m);
+
+                topeGlobalDisponible = topeGlobal - ctx.SaldoPrestamosTopadosAhorro;
+
+                // Evita castigar doble si el tipo ya tiene saldo vigente
+                topeGlobalDisponible += saldoActualDelTipo;
+
+                if (topeGlobalDisponible < 0)
+                    topeGlobalDisponible = 0m;
+            }
+
+            decimal vecesAhorro = tipo.VecesAhorro > 0 ? tipo.VecesAhorro : 3.5m;
+
+            decimal topeProducto = _prestamoCalculatorService.CalcularTopePorAhorros(
+                ctx.MisAhorros,
+                vecesAhorro);
+
+            if (tipo.MontoMaximo > 0)
+                topeProducto = Math.Min(topeProducto, tipo.MontoMaximo);
+
+            if (tipo.FactorSobreAhorro > 0)
+            {
+                decimal topeFactor = ctx.MisAhorros * tipo.FactorSobreAhorro;
+                topeProducto = Math.Min(topeProducto, topeFactor);
+            }
+
+            decimal puedeSolicitar = Math.Min(topeGlobalDisponible, topeProducto);
+
+            if (puedeSolicitar < 0)
+                puedeSolicitar = 0m;
+
+            decimal importeLiquido = CalcularImporteLiquidoEstimado(
+                puedeSolicitar,
+                tipo,
+                plazoMeses);
+
+            return (
+                Math.Round(puedeSolicitar, 2),
+                Math.Round(importeLiquido, 2)
+            );
+        }
+
+        private decimal CalcularImporteLiquidoEstimado(
+            decimal puedeSolicitar,
+            TipoPrestamoDto tipo,
+            int plazoMeses)
+        {
+            if (puedeSolicitar <= 0)
                 return 0m;
 
-            return (clavePrestamo, subClave) switch
-            {
-                ("ES", 0) => Math.Round(importeLiquido / plazoMeses, 2),
-                ("PR", 0) => 0m,
-                ("PR", 1) => 0m,
-                ("PR", 2) => 0m,
-                _ => 0m
-            };
+            if (tipo.EsLiquido == "S")
+                return Math.Round(puedeSolicitar, 2);
+
+            decimal tasa = tipo.TasaIntNormal;
+            decimal seguro = tipo.PorcenSeguroPasivo;
+            decimal fondo = tipo.PorcenFondoGarantia;
+
+            decimal cargoInteres = 0m;
+            decimal cargoSeguro = 0m;
+            decimal cargoFondo = 0m;
+
+            if (tasa > 0)
+                cargoInteres = puedeSolicitar * (tasa / 100m);
+
+            if (seguro > 0)
+                cargoSeguro = puedeSolicitar * (seguro / 100m);
+
+            if (fondo > 0)
+                cargoFondo = puedeSolicitar * (fondo / 100m);
+
+            decimal importeLiquido = puedeSolicitar - cargoInteres - cargoSeguro - cargoFondo;
+
+            if (importeLiquido < 0)
+                importeLiquido = 0m;
+
+            return Math.Round(importeLiquido, 2);
         }
-        private decimal ObtenerVecesAhorroProyeccion(string clavePrestamo, int subClave)
-        {
-            return (clavePrestamo, subClave) switch
-            {
-                ("ES", 0) => 3.5m,
-                ("PR", 0) => 3.5m,
-                ("PR", 1) => 3.5m,
-                ("PR", 2) => 3.5m,
-                _ => 3.5m
-            };
-        }
+
         /* ============================================================
-         * SECCIÓN B: TIPOS DE PRÉSTAMO (TP + DP)
+         * SECCIÓN D: TIPOS DE PRÉSTAMO
          * ============================================================ */
         private async Task<List<TipoPrestamoDto>> ObtenerTiposPrestamoAsync(EstadoCuentaContextDto ctx)
         {
             var query =
                 from tp in _context.TABLA_DE_TIPOS_DE_PRESTAMOS.AsNoTracking()
                 join dp in _context.DETALLE_DE_TIPOS_DE_PRESTAMOS.AsNoTracking()
-                     on tp.ClavePrestamo equals dp.ClavePrestamo
+                    on tp.ClavePrestamo equals dp.ClavePrestamo
                 where dp.TipoSocio == ctx.Estatus
-                        && dp.Vigencia == ctx.Vigencia
-                        && tp.ClavePrestamo != "IC"
+                      && dp.Vigencia == ctx.Vigencia
+                      && tp.ClavePrestamo != "IC"
                 select new TipoPrestamoDto
                 {
                     ClavePrestamo = tp.ClavePrestamo ?? string.Empty,
@@ -250,7 +418,7 @@ namespace CMAP_SISTEMAS_MVC.Services
                     PorcenFondoGarantia = dp.PorcenFondoGarantia ?? 0,
                     FactorSobreAhorro = dp.FactorSobreAhorro ?? 0,
                     MesesMinCotizados = dp.MesesMinCotizados ?? 0
-               };
+                };
 
             if (ctx.SoloPrestamoGM)
             {
@@ -259,18 +427,37 @@ namespace CMAP_SISTEMAS_MVC.Services
 
             var lista = await query.ToListAsync();
 
-            var orden = new[] { "ES", "PC", "PP", "PR", "RE", "VI" };
+            var es = lista.FirstOrDefault(x => x.ClavePrestamo == "ES");
+            var pc = lista.FirstOrDefault(x => x.ClavePrestamo == "PC");
+
+            var prestamoESoPC = es ?? pc;
+
+            //  Eliminar ES y PC de la lista
+            lista = lista
+                .Where(x => x.ClavePrestamo != "ES" && x.ClavePrestamo != "PC")
+                .ToList();
+
+            //  Agregar solo uno (prioridad ES sobre PC)
+            if (prestamoESoPC != null)
+            {
+                lista.Add(prestamoESoPC);
+            }
+
+            // Orden de visualización de NO PERSONALES
+            // PP se excluye aquí porque se procesa aparte en el flujo de personales
+            var orden = new[] { "ES", "EV", "PP", "PR", "RE", "VI", "PC" };
 
             return lista
-                .Where(x => orden.Contains(x.ClavePrestamo))
-                .GroupBy(x => x.ClavePrestamo)
-                .Select(g => g.First())
-                .OrderBy(x => Array.IndexOf(orden, x.ClavePrestamo))
-                .ToList();
+               .Where(x =>
+                    orden.Contains(x.ClavePrestamo) &&
+                    x.ClavePrestamo != "PP") // PP se procesa aparte en el flujo de personales
+               .OrderBy(x => Array.IndexOf(orden, x.ClavePrestamo))
+               .ThenBy(x => x.SubCve)
+               .ToList();
         }
 
         /* ============================================================
-         * SECCIÓN C: PRÉSTAMOS VIGENTES
+         * SECCIÓN E: PRÉSTAMOS VIGENTES
          * ============================================================ */
         private async Task<List<PrestamoVigenteDto>> ObtenerPrestamosVigentesAsync(
             string clavePension,
@@ -286,7 +473,9 @@ namespace CMAP_SISTEMAS_MVC.Services
 
                 if (row.SaldoPrestamo != 0)
                 {
-                    liquidaCon = await _prestamoCalculatorService.ObtenerLiquidaConAsync(row.Id, fechaSistema);
+                    liquidaCon = await _prestamoCalculatorService.ObtenerLiquidaConAsync(
+                        row.Id,
+                        fechaSistema);
                 }
 
                 resultado.Add(new PrestamoVigenteDto
@@ -336,105 +525,24 @@ namespace CMAP_SISTEMAS_MVC.Services
         }
 
         /* ============================================================
-         * SECCIÓN D: CONSTRUCCIÓN DE FILAS
+         * SECCIÓN F: PRESENTACIÓN
          * ============================================================ */
-        private EstadoCuentaRowsDto ConstruirFilaPorTipo(
-        EstadoCuentaContextDto ctx,
-        TipoPrestamoDto tipo,
-        List<PrestamoVigenteDto> vigentes)
-        {
-            var prestamosDelTipo = vigentes
-                .Where(p => p.TipoPrestamo == tipo.ClavePrestamo)
-                .ToList();
-
-            if (tipo.ClavePrestamo == "PP" && prestamosDelTipo.Any())
-            {
-                prestamosDelTipo = prestamosDelTipo
-                    .OrderByDescending(x => x.FechaPrestamo ?? DateTime.MinValue)
-                    .Take(1)
-                    .ToList();
-            }
-
-            decimal saldoTotal = prestamosDelTipo.Sum(x => x.SaldoPrestamo);
-            decimal importeTotal = prestamosDelTipo.Sum(x => x.ImportePagare);
-
-            var prestamoPrincipal = prestamosDelTipo
-                .OrderByDescending(x => x.FechaPrestamo ?? DateTime.MinValue)
-                .FirstOrDefault();
-
-            decimal liquidaCon = prestamoPrincipal?.LiquidaCon ?? 0m;
-            DateTime? fechaPrestamo = prestamoPrincipal?.FechaPrestamo;
-            DateTime? fechaVencimiento = prestamoPrincipal?.FechaVencimiento;
-
-            decimal topePorAhorros = _prestamoCalculatorService.CalcularTopePorAhorros(
-                ctx.MisAhorros,
-                tipo.VecesAhorro);
-
-            decimal puedeSolicitar = topePorAhorros - saldoTotal;
-
-            if (puedeSolicitar < 0)
-                puedeSolicitar = 0;
-
-            decimal descuento = 0m;
-
-            if (prestamoPrincipal != null)
-            {
-                descuento = _prestamoCalculatorService.CalcularDescuento(
-                    prestamoPrincipal.SaldoPrestamo,
-                    prestamoPrincipal.ImporteAmortizacion);
-            }
-
-            bool estaVigente = prestamoPrincipal != null;
-            bool esProyeccion = !estaVigente;
-
-            decimal importeLiquido = CalcularImporteLiquidoFila(
-                tipo.ClavePrestamo,
-                prestamoPrincipal?.SubCve,
-                estaVigente);
-
-            return new EstadoCuentaRowsDto
-            {
-                IdReporte = ctx.IdReporte,
-                ClavePension = ctx.ClavePension,
-
-                ClavePrestamo = tipo.ClavePrestamo,
-                SubClave = prestamoPrincipal?.SubCve ?? 0,
-                NombrePrestamo = ObtenerNombreVisible(tipo.ClavePrestamo, prestamoPrincipal?.SubCve),
-
-                FechaPrestamo = fechaPrestamo,
-                ImportePrestamo = importeTotal,
-                PlazoMeses = tipo.PlazoMaximo,
-                FechaVencimiento = fechaVencimiento,
-
-                SaldoPrestamo = saldoTotal,
-                CantidadPuedeSolicitar = puedeSolicitar,
-
-                ImporteLiquido = importeLiquido,
-                Descuento = descuento,
-                LiquidaCon = liquidaCon,
-
-                EstaVigente = estaVigente,
-                EsProyeccion = esProyeccion,
-                OrdenVisual = ObtenerOrdenVisual(tipo.ClavePrestamo, prestamoPrincipal?.SubCve)
-            };
-        }
-
         private string ObtenerNombreVisible(string clavePrestamo, int? subClave)
         {
             return (clavePrestamo, subClave) switch
             {
-                ("PC", _) => "COMPLEMENTARIO",
-                ("ES", _) => "EVENTOS SOCIALES",
+                ("ES", _) => "ESPECIAL",
+                ("EV", _) => "EVENTOS SOCIALES",
                 ("PP", _) => "PRÉSTAMO PERSONAL",
+                ("PC", _) => "COMPLEMENTARIO",
 
-                // Muy importante:
-                ("PR", 0) => "PRENDARIO NORMAL",
                 ("PR", null) => "PRENDARIO NORMAL",
+                ("PR", 0) => "PRENDARIO NORMAL",
                 ("PR", 1) => "PRENDARIO TIPO A",
                 ("PR", 2) => "PRENDARIO TIPO B",
 
                 ("RE", _) => "PRÉSTAMO REFACCIONAR",
-                ("VA", _) => "VIAJES T.",
+                ("VA", _) => "VARIOS T.",
                 ("VI", _) => "VIAJES T.",
 
                 _ => clavePrestamo
@@ -445,8 +553,8 @@ namespace CMAP_SISTEMAS_MVC.Services
         {
             return (clavePrestamo, subClave) switch
             {
-                ("PC", _) => 1,
-                ("ES", _) => 2,
+                ("ES", _) => 1,
+                ("EV", _) => 2,
                 ("PP", _) => 3,
 
                 ("PR", null) => 4,
@@ -457,6 +565,7 @@ namespace CMAP_SISTEMAS_MVC.Services
                 ("RE", _) => 7,
                 ("VA", _) => 8,
                 ("VI", _) => 8,
+                ("PC", _) => 9,
                 _ => 99
             };
         }

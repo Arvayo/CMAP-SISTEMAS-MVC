@@ -8,5 +8,6 @@
         decimal CalcularPorcentajeCubierto(decimal importePagare, decimal saldoPrestamo);
         decimal CalcularDescuento(decimal saldoPrestamo, decimal importeAmortizacion);
         decimal CalcularTopePorAhorros(decimal ahorros, decimal factor);
+        decimal CalcularDescuentoProyectado(decimal importePagare, int plazoMeses, decimal tasa);
     }
 }

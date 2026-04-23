@@ -299,9 +299,6 @@ namespace CMAP_SISTEMAS_MVC.Services
             return meses < 0 ? 0 : meses;
         }
 
-
-
-
     }
 }
 

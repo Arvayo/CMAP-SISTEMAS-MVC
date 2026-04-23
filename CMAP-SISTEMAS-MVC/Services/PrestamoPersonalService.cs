@@ -220,6 +220,11 @@ namespace CMAP_SISTEMAS_MVC.Services
         private async Task<List<TipoPrestamoDto>> ObtenerTiposPrestamoPersonalAsync(
             EstadoCuentaContextDto ctx)
         {
+
+            var estatus = (ctx.Estatus ?? "").Trim();
+            var vigencia = (ctx.Vigencia ?? "").Trim();
+
+
             return await (
                 from tp in _context.TABLA_DE_TIPOS_DE_PRESTAMOS.AsNoTracking()
                 join dp in _context.DETALLE_DE_TIPOS_DE_PRESTAMOS.AsNoTracking()
@@ -296,9 +301,9 @@ namespace CMAP_SISTEMAS_MVC.Services
          * SECCIÓN C: CONSTRUCCIÓN DE FILA PP
          * ============================================================ */
         private async Task<EstadoCuentaRowsDto?> ConstruirFilaPrestamoPersonalAsync(
-            EstadoCuentaContextDto ctx,
-            TipoPrestamoDto tipo,
-            PrestamoVigenteDto? prestamoPP)
+        EstadoCuentaContextDto ctx,
+        TipoPrestamoDto tipo,
+        PrestamoVigenteDto? prestamoPP)
         {
             decimal saldoPrestamo = prestamoPP?.SaldoPrestamo ?? 0m;
             decimal importePrestamo = prestamoPP?.ImportePagare ?? 0m;
@@ -320,6 +325,16 @@ namespace CMAP_SISTEMAS_MVC.Services
             else
             {
                 puedeRenovar = PuedeRenovarPrestamoPersonal(ctx, tipo, prestamoPP!);
+
+                // Si tiene préstamo vigente y no puede renovar,
+                // no se deben mostrar subclaves proyectadas.
+                if (!puedeRenovar)
+                {
+                    // 🔥 VB muestra filas aunque no pueda renovar
+                    puedeSolicitar = 0;
+                    importeLiquido = 0;
+                    descuento = 0;
+                }
             }
 
             if (puedeRenovar)
@@ -327,7 +342,7 @@ namespace CMAP_SISTEMAS_MVC.Services
                 puedeSolicitar = CalcularAlcancePrestamoPersonal(ctx, tipo, saldoPrestamo);
 
                 if (puedeSolicitar < 0)
-                    puedeSolicitar = 0;
+                    puedeSolicitar = 0m;
 
                 descuento = CalcularDescuentoPrestamoPersonal(ctx, tipo, puedeSolicitar);
 
@@ -338,8 +353,6 @@ namespace CMAP_SISTEMAS_MVC.Services
                     puedeSolicitar);
             }
 
-            if (saldoPrestamo <= 0 && puedeSolicitar <= 0)
-                return null;
 
             return new EstadoCuentaRowsDto
             {
@@ -367,9 +380,9 @@ namespace CMAP_SISTEMAS_MVC.Services
          * SECCIÓN D: REGLAS PP
          * ============================================================ */
         private bool PuedeRenovarPrestamoPersonal(
-     EstadoCuentaContextDto ctx,
-     TipoPrestamoDto tipo,
-     PrestamoVigenteDto prestamoPP)
+        EstadoCuentaContextDto ctx,
+        TipoPrestamoDto tipo,
+        PrestamoVigenteDto prestamoPP)
         {
             if (prestamoPP.ImportePagare <= 0)
                 return false;
