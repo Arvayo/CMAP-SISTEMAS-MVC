@@ -40,13 +40,13 @@ namespace CMAP_SISTEMAS_MVC.Services
          * API PÚBLICA
          * ============================================================ */
         public async Task<List<EstadoCuentaRowsDto>> GenerarPrestamosNoPersonalesAsync(
-            EstadoCuentaContextDto contexto)
+        EstadoCuentaContextDto contexto)
         {
-            var tiposPrestamo = await ObtenerTiposPrestamoAsync(contexto);
-
             var prestamosVigentes = await ObtenerPrestamosVigentesAsync(
                 contexto.ClavePension,
                 contexto.FechaSistema);
+
+            var tiposPrestamo = await ObtenerTiposPrestamoAsync(contexto, prestamosVigentes);
 
             var resultado = new List<EstadoCuentaRowsDto>();
 
@@ -55,7 +55,7 @@ namespace CMAP_SISTEMAS_MVC.Services
                 var fila = ConstruirFilaPorTipo(contexto, tipo, prestamosVigentes);
 
                 if (fila != null)
-                resultado.Add(fila);
+                    resultado.Add(fila);
             }
 
             AgregarFilasProyectadas(contexto, resultado, prestamosVigentes);
@@ -111,11 +111,17 @@ namespace CMAP_SISTEMAS_MVC.Services
             DateTime? fechaPrestamo = prestamoPrincipal?.FechaPrestamo;
             DateTime? fechaVencimiento = prestamoPrincipal?.FechaVencimiento;
 
-            bool estaVigente = prestamoPrincipal != null;
-            bool esPrestamoPersonal = tipo.ClavePrestamo == "PP";
-
-            bool realizarProyeccion = !estaVigente && tipo.Vigente == "S" && !esPrestamoPersonal;
+            bool tieneRegistroVigente = prestamoPrincipal != null;
+            bool estaVigente = prestamoPrincipal != null && prestamoPrincipal.SaldoPrestamo > 0;
+            bool realizarProyeccion = !estaVigente && tipo.Vigente == "S";
             bool esProyeccion = realizarProyeccion;
+
+            var soloMostrarSiVigente = new[] { "GM", "EX", "PH" };
+
+            if (soloMostrarSiVigente.Contains(tipo.ClavePrestamo) && !estaVigente)
+            {
+                return null;
+            }
 
             if (!estaVigente && !realizarProyeccion)
             {
@@ -124,7 +130,7 @@ namespace CMAP_SISTEMAS_MVC.Services
 
             decimal descuento = 0m;
 
-            if (prestamoPrincipal != null)
+            if (estaVigente && prestamoPrincipal != null)
             {
                 descuento = _prestamoCalculatorService.CalcularDescuento(
                     prestamoPrincipal.SaldoPrestamo,
@@ -134,7 +140,7 @@ namespace CMAP_SISTEMAS_MVC.Services
             decimal puedeSolicitar = 0m;
             decimal importeLiquido = 0m;
 
-            if (!esPrestamoPersonal)
+            if (realizarProyeccion)
             {
                 (puedeSolicitar, importeLiquido) = CalcularAlcanceNoPersonal(
                     ctx,
@@ -179,40 +185,29 @@ namespace CMAP_SISTEMAS_MVC.Services
         /* ============================================================
          * SECCIÓN B: PROYECCIONES
          * ============================================================ */
+        /* ============================================================
+  * SECCIÓN B: PROYECCIONES
+  * ============================================================
+  * Temporalmente desactivado.
+  *
+  * Motivo:
+  * Las proyecciones hardcodeadas generaban duplicados e importes
+  * incorrectos en Estado de Cuenta.
+  *
+  * Siguiente etapa:
+  * Generar estas filas desde:
+  * - TABLA_DE_TIPOS_DE_PRESTAMOS
+  * - DETALLE_DE_TIPOS_DE_PRESTAMOS
+  *
+  * No eliminar todavía CrearFilaProyectada, porque se reutilizará
+  * cuando reconstruyamos la lógica de proyecciones desde BD.
+  * ============================================================ */
         private void AgregarFilasProyectadas(
             EstadoCuentaContextDto ctx,
             List<EstadoCuentaRowsDto> resultado,
             List<PrestamoVigenteDto> vigentes)
         {
-            // 1) Especial = ES
-            AgregarFilaSiNoExiste(resultado,
-                CrearFilaProyectada(ctx, "ES", 0, "ESPECIAL", 3, 8500.00m, 0m, 0m, 0m));
-
-            // 2) Eventos Sociales = EV
-            AgregarFilaSiNoExiste(resultado,
-                CrearFilaProyectada(ctx, "EV", 0, "EVENTOS SOCIALES", 30, 35444.23m, 0m, 0m, 0m));
-
-            // 3) Personal = PP (solo como fila general en esta sección)
-            AgregarFilaSiNoExiste(resultado,
-                CrearFilaProyectada(ctx, "PP", 0, "PRÉSTAMO PERSONAL", 15, 0m, 0m, 0m, 0m));
-
-            // 4) Prendarios
-            AgregarFilaSiNoExiste(resultado,
-                CrearFilaProyectada(ctx, "PR", 0, "PRENDARIO NORMAL", 15, 16501.23m, 0m, 0m, 0m));
-
-            AgregarFilaSiNoExiste(resultado,
-                CrearFilaProyectada(ctx, "PR", 1, "PRENDARIO TIPO A", 15, 22001.64m, 0m, 0m, 0m));
-
-            AgregarFilaSiNoExiste(resultado,
-                CrearFilaProyectada(ctx, "PR", 2, "PRENDARIO TIPO B", 24, 34454.03m, 0m, 0m, 0m));
-
-            // 5) Refaccionario
-            AgregarFilaSiNoExiste(resultado,
-                CrearFilaProyectada(ctx, "RE", 0, "PRÉSTAMO REFACCIONAR", 15, 11000.82m, 0m, 0m, 0m));
-
-            // 6) Viajes
-            AgregarFilaSiNoExiste(resultado,
-                CrearFilaProyectada(ctx, "VI", 0, "VIAJES T.", 15, 11000.82m, 0m, 0m, 0m));
+            // Intencionalmente vacío por ahora.
         }
 
         private EstadoCuentaRowsDto CrearFilaProyectada(
@@ -406,7 +401,9 @@ namespace CMAP_SISTEMAS_MVC.Services
         /* ============================================================
          * SECCIÓN D: TIPOS DE PRÉSTAMO
          * ============================================================ */
-        private async Task<List<TipoPrestamoDto>> ObtenerTiposPrestamoAsync(EstadoCuentaContextDto ctx)
+        private async Task<List<TipoPrestamoDto>> ObtenerTiposPrestamoAsync(
+        EstadoCuentaContextDto ctx,
+        List<PrestamoVigenteDto> vigentes)
         {
             var query =
                 from tp in _context.TABLA_DE_TIPOS_DE_PRESTAMOS.AsNoTracking()
@@ -444,33 +441,50 @@ namespace CMAP_SISTEMAS_MVC.Services
 
             var lista = await query.ToListAsync();
 
-            var es = lista.FirstOrDefault(x => x.ClavePrestamo == "ES");
-            var pc = lista.FirstOrDefault(x => x.ClavePrestamo == "PC");
+            bool tieneEsVigente = vigentes.Any(x =>
+                x.TipoPrestamo == "ES" &&
+                x.SaldoPrestamo > 0);
 
-            var prestamoESoPC = es ?? pc;
+            bool tienePcVigente = vigentes.Any(x =>
+                x.TipoPrestamo == "PC" &&
+                x.SaldoPrestamo > 0);
 
-            //  Eliminar ES y PC de la lista
+            var tipoEs = lista.FirstOrDefault(x => x.ClavePrestamo == "ES");
+            var tipoPc = lista.FirstOrDefault(x => x.ClavePrestamo == "PC");
+
             lista = lista
-                .Where(x => x.ClavePrestamo != "ES" && x.ClavePrestamo != "PC")
+                .Where(x => x.ClavePrestamo != "ES" &&
+                            x.ClavePrestamo != "PC")
                 .ToList();
 
-            //  Agregar solo uno (prioridad ES sobre PC)
-            if (prestamoESoPC != null)
+            if (tieneEsVigente && tipoEs != null)
             {
-                lista.Add(prestamoESoPC);
+                lista.Add(tipoEs);
+            }
+            else if (tienePcVigente && tipoPc != null)
+            {
+                lista.Add(tipoPc);
+            }
+            else if (tipoEs != null)
+            {
+                lista.Add(tipoEs);
+            }
+            else if (tipoPc != null)
+            {
+                lista.Add(tipoPc);
             }
 
             // Orden de visualización de NO PERSONALES
             // PP se excluye aquí porque se procesa aparte en el flujo de personales
-            var orden = new[] { "ES", "EV", "PP", "PR", "RE", "VI", "PC" };
-
+            var orden = new[] { "ES", "PC", "EV", "PR", "RE", "VI", "VA", "GM", "EX", "PH" };
+            
             return lista
-               .Where(x =>
+                .Where(x =>
                     orden.Contains(x.ClavePrestamo) &&
                     x.ClavePrestamo != "PP") // PP se procesa aparte en el flujo de personales
-               .OrderBy(x => Array.IndexOf(orden, x.ClavePrestamo))
-               .ThenBy(x => x.SubCve)
-               .ToList();
+                .OrderBy(x => Array.IndexOf(orden, x.ClavePrestamo))
+                .ThenBy(x => x.SubCve)
+                .ToList();
         }
 
         /* ============================================================
@@ -534,7 +548,8 @@ namespace CMAP_SISTEMAS_MVC.Services
                         CAST(0 AS DECIMAL(18,2)) AS LiquidaCon
                     FROM TABLA_DE_PRESTAMOS tp
                     WHERE tp.ClavePension = {clavePension}
-                      AND tp.EstatusPrestamo = 'VI'
+                    AND tp.EstatusPrestamo = 'VI'
+                    AND ISNULL(tp.TipoPrestamo, '') <> 'PP'
                     ORDER BY tp.TipoPrestamo, tp.FechaPrestamo DESC
                 ")
                 .AsNoTracking()
@@ -549,17 +564,17 @@ namespace CMAP_SISTEMAS_MVC.Services
             return (clavePrestamo, subClave) switch
             {
                 ("ES", _) => "ESPECIAL",
-                ("EV", _) => "EVENTOS SOCIALES",
-                ("PP", _) => "PRÉSTAMO PERSONAL",
                 ("PC", _) => "COMPLEMENTARIO",
+                ("EV", _) => "EVENTOS SOCIALES",
+
+                ("PP", _) => "PERSONAL",
 
                 ("PR", null) => "PRENDARIO NORMAL",
                 ("PR", 0) => "PRENDARIO NORMAL",
                 ("PR", 1) => "PRENDARIO TIPO A",
                 ("PR", 2) => "PRENDARIO TIPO B",
 
-                ("RE", _) => "PRÉSTAMO REFACCIONAR",
-                ("VA", _) => "VARIOS T.",
+                ("RE", _) => "REFACCIONARIO",
                 ("VI", _) => "VIAJES T.",
 
                 _ => clavePrestamo
@@ -571,7 +586,10 @@ namespace CMAP_SISTEMAS_MVC.Services
             return (clavePrestamo, subClave) switch
             {
                 ("ES", _) => 1,
+                ("PC", _) => 1,
+
                 ("EV", _) => 2,
+
                 ("PP", _) => 3,
 
                 ("PR", null) => 4,
@@ -582,7 +600,7 @@ namespace CMAP_SISTEMAS_MVC.Services
                 ("RE", _) => 7,
                 ("VA", _) => 8,
                 ("VI", _) => 8,
-                ("PC", _) => 9,
+
                 _ => 99
             };
         }

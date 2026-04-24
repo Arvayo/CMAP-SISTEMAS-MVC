@@ -49,19 +49,22 @@ namespace CMAP_SISTEMAS_MVC.Services
         /// <summary>
         /// Genera el estado de cuenta (resumen por tipo de préstamo).
         /// </summary>
-        public async Task<EstadoCuentaResultadoDTO> GenerarEstadoCuentaAsync(EstadoCuentaContextDto contexto)
+        public async Task<EstadoCuentaResultadoDTO> GenerarEstadoCuentaAsync(
+        EstadoCuentaContextDto contexto)
         {
             ValidarContexto(contexto);
 
             await CargarDatosBaseSocioEnContextoAsync(contexto);
 
-           
             var noPersonales = await _prestamoNoPersonalService
                 .GenerarPrestamosNoPersonalesAsync(contexto);
 
             var personales = new List<EstadoCuentaRowsDto>();
             PrestamoPersonalResumenDTO? resumenPrestamoPersonal = null;
 
+            /* ============================================================
+             * SECCIÓN C: PRÉSTAMOS PERSONALES
+             * ============================================================ */
             if (!contexto.SoloPrestamoGM)
             {
                 var resultadoPersonal = await _prestamoPersonalService
@@ -69,6 +72,50 @@ namespace CMAP_SISTEMAS_MVC.Services
 
                 personales = resultadoPersonal.FilasProyeccion;
                 resumenPrestamoPersonal = resultadoPersonal.Resumen;
+            }
+
+            /* ============================================================
+             * SECCIÓN D: FILA RESUMEN PP EN TABLA GENERAL
+             * ============================================================
+             * El sistema VB muestra el préstamo PERSONAL dentro de la
+             * tabla general de "Información de Préstamos", y además muestra
+             * el detalle/proyección de PP en una tabla inferior.
+             * ============================================================ */
+            var filaResumenPP = personales
+                .OrderBy(x => x.SubClave)
+                .FirstOrDefault();
+
+            if (filaResumenPP != null)
+            {
+                noPersonales.Add(new EstadoCuentaRowsDto
+                {
+                    IdReporte = filaResumenPP.IdReporte,
+                    ClavePension = filaResumenPP.ClavePension,
+
+                    ClavePrestamo = "PP",
+                    SubClave = filaResumenPP.SubClave,
+                    NombrePrestamo = "PERSONAL",
+
+                    FechaPrestamo = filaResumenPP.FechaPrestamo,
+                    ImportePrestamo = filaResumenPP.ImportePrestamo,
+                    PlazoMeses = filaResumenPP.PlazoMeses,
+                    FechaVencimiento = filaResumenPP.FechaVencimiento,
+
+                    SaldoPrestamo = filaResumenPP.SaldoPrestamo,
+                    LiquidaCon = filaResumenPP.LiquidaCon,
+                    CantidadPuedeSolicitar = filaResumenPP.CantidadPuedeSolicitar,
+                    ImporteLiquido = filaResumenPP.ImporteLiquido,
+                    Descuento = filaResumenPP.Descuento,
+
+                    EstaVigente = filaResumenPP.EstaVigente,
+                    EsProyeccion = filaResumenPP.EsProyeccion,
+                    OrdenVisual = 3
+                });
+
+                noPersonales = noPersonales
+                    .OrderBy(x => x.OrdenVisual)
+                    .ThenBy(x => x.SubClave)
+                    .ToList();
             }
 
             if (resumenPrestamoPersonal == null)
@@ -86,7 +133,6 @@ namespace CMAP_SISTEMAS_MVC.Services
                     MensajeResultado = "No se pudo determinar el estado del préstamo personal."
                 };
             }
-
 
             var resultado = new EstadoCuentaResultadoDTO
             {

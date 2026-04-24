@@ -274,8 +274,8 @@ namespace CMAP_SISTEMAS_MVC.Services
             var row = await _context.TABLA_DE_PRESTAMOS
                 .AsNoTracking()
                 .Where(p => p.ClavePension == clavePension
-                         && p.TipoPrestamo == "PP"
-                         && p.EstatusPrestamo == "VI")
+                         && (p.TipoPrestamo ?? "").Trim() == "PP"
+                         && (p.EstatusPrestamo ?? "").Trim() == "VI")
                 .OrderByDescending(p => p.FechaPrestamo)
                 .ThenByDescending(p => p.FechaUltimoPago)
                 .Select(p => new PrestamoVigenteDto
