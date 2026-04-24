@@ -170,6 +170,7 @@
                             <th>Importe Líquido</th>
                             <th>Descuento</th>
                             <th>Plazo Meses</th>
+                            <th>Tasa</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -183,6 +184,7 @@
                                 <td>@item.ImporteLiquido.ToString("N2")</td>
                                 <td>@item.Descuento.GetValueOrDefault().ToString("N2")</td>
                                 <td>@item.PlazoMeses</td>
+                                <td>@item.TasaInteres.ToString("N2")%</td>
                             </tr>
                         }
                     </tbody>

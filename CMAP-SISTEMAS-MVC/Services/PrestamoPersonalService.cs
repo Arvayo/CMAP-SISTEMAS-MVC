@@ -218,25 +218,30 @@ namespace CMAP_SISTEMAS_MVC.Services
          * SECCIÓN A: CONFIGURACIÓN DE PP
          * ============================================================ */
         private async Task<List<TipoPrestamoDto>> ObtenerTiposPrestamoPersonalAsync(
-            EstadoCuentaContextDto ctx)
+        EstadoCuentaContextDto ctx)
         {
-
             var estatus = (ctx.Estatus ?? "").Trim();
-            var vigencia = (ctx.Vigencia ?? "").Trim();
 
+            var fechaIngresoSocio = ctx.FechaIngreso
+                ?? throw new InvalidOperationException("No se encontró la fecha de ingreso del socio.");
+
+            var vigencia = ObtenerVigencia(fechaIngresoSocio).ToString();
 
             return await (
                 from tp in _context.TABLA_DE_TIPOS_DE_PRESTAMOS.AsNoTracking()
                 join dp in _context.DETALLE_DE_TIPOS_DE_PRESTAMOS.AsNoTracking()
                     on tp.ClavePrestamo equals dp.ClavePrestamo
-                where dp.TipoSocio == ctx.Estatus
-                      && dp.Vigencia == ctx.Vigencia
+                where dp.TipoSocio == estatus
+                      && dp.Vigencia == vigencia
                       && tp.ClavePrestamo == "PP"
                       && dp.Vigente == "S"
                 select new TipoPrestamoDto
                 {
                     ClavePrestamo = tp.ClavePrestamo ?? string.Empty,
-                    NombrePrestamo = tp.NombrePrestamo ?? string.Empty,
+
+                    NombrePrestamo = !string.IsNullOrWhiteSpace(dp.NombrePrestamo)
+                        ? dp.NombrePrestamo.Trim()
+                        : (tp.NombrePrestamo ?? string.Empty).Trim(),
 
                     VecesAhorro = tp.VecesAhorro ?? 0,
                     PorcenRenova = tp.PorcenRenova ?? 0,
@@ -361,7 +366,7 @@ namespace CMAP_SISTEMAS_MVC.Services
 
                 ClavePrestamo = tipo.ClavePrestamo,
                 SubClave = tipo.SubCve,
-                NombrePrestamo = tipo.NombrePrestamo,
+                NombrePrestamo = (tipo.NombrePrestamo ?? string.Empty).Trim(),
 
                 FechaPrestamo = fechaPrestamo,
                 ImportePrestamo = importePrestamo,
@@ -372,7 +377,8 @@ namespace CMAP_SISTEMAS_MVC.Services
                 CantidadPuedeSolicitar = puedeSolicitar,
                 ImporteLiquido = importeLiquido,
                 Descuento = descuento,
-                LiquidaCon = liquidaCon
+                LiquidaCon = liquidaCon,
+                TasaInteres = tipo.TasaIntNormal
             };
         }
 
@@ -413,6 +419,17 @@ namespace CMAP_SISTEMAS_MVC.Services
             }
 
             return cumplePago && cumpleTiempo;
+        }
+
+        private static int ObtenerVigencia(DateTime fechaIngreso)
+        {
+            if (fechaIngreso <= new DateTime(2011, 4, 13))
+                return 20110413;
+
+            if (fechaIngreso <= new DateTime(2017, 4, 30))
+                return 20170430;
+
+            return 99999999;
         }
 
         private decimal CalcularAlcancePrestamoPersonal(
@@ -508,5 +525,6 @@ namespace CMAP_SISTEMAS_MVC.Services
                 ? 2.41m
                 : 1.85m;
         }
+       
     }
 }

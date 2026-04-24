@@ -74,11 +74,22 @@ namespace CMAP_SISTEMAS_MVC.Services
         TipoPrestamoDto tipo,
         List<PrestamoVigenteDto> vigentes)
         {
-            var prestamosDelTipo = vigentes
-                .Where(p =>
-                    p.TipoPrestamo == tipo.ClavePrestamo &&
-                    (p.SubCve ?? 0) == (tipo.SubCve ?? 0))
-                .ToList();
+            List<PrestamoVigenteDto> prestamosDelTipo;
+
+            if (tipo.ClavePrestamo == "PP")
+            {
+                prestamosDelTipo = vigentes
+                    .Where(p => p.TipoPrestamo == "PP")
+                    .ToList();
+            }
+            else
+            {
+                prestamosDelTipo = vigentes
+                    .Where(p =>
+                        p.TipoPrestamo == tipo.ClavePrestamo &&
+                        (p.SubCve ?? 0) == (tipo.SubCve ?? 0))
+                    .ToList();
+            }
 
             // Para PP, si por alguna razón existen varios vigentes, tomamos el más reciente.
             if (tipo.ClavePrestamo == "PP" && prestamosDelTipo.Any())
@@ -101,7 +112,9 @@ namespace CMAP_SISTEMAS_MVC.Services
             DateTime? fechaVencimiento = prestamoPrincipal?.FechaVencimiento;
 
             bool estaVigente = prestamoPrincipal != null;
-            bool realizarProyeccion = !estaVigente && tipo.Vigente == "S";
+            bool esPrestamoPersonal = tipo.ClavePrestamo == "PP";
+
+            bool realizarProyeccion = !estaVigente && tipo.Vigente == "S" && !esPrestamoPersonal;
             bool esProyeccion = realizarProyeccion;
 
             if (!estaVigente && !realizarProyeccion)
@@ -118,13 +131,18 @@ namespace CMAP_SISTEMAS_MVC.Services
                     prestamoPrincipal.ImporteAmortizacion);
             }
 
-            var (puedeSolicitar, importeLiquido) = CalcularAlcanceNoPersonal(
-                ctx,
-                tipo,
-                saldoTotal,
-                tipo.PlazoMaximo);
+            decimal puedeSolicitar = 0m;
+            decimal importeLiquido = 0m;
 
-            // Si existe préstamo vigente, no proyectamos líquido nuevo
+            if (!esPrestamoPersonal)
+            {
+                (puedeSolicitar, importeLiquido) = CalcularAlcanceNoPersonal(
+                    ctx,
+                    tipo,
+                    saldoTotal,
+                    tipo.PlazoMaximo);
+            }
+
             if (estaVigente)
             {
                 importeLiquido = 0m;
@@ -143,12 +161,11 @@ namespace CMAP_SISTEMAS_MVC.Services
 
                 FechaPrestamo = fechaPrestamo,
                 ImportePrestamo = importeTotal,
-                PlazoMeses = tipo.PlazoMaximo,
+                PlazoMeses = prestamoPrincipal?.NumMesesPrestamo ?? tipo.PlazoMaximo,
                 FechaVencimiento = fechaVencimiento,
 
                 SaldoPrestamo = saldoTotal,
                 CantidadPuedeSolicitar = puedeSolicitar,
-
                 ImporteLiquido = importeLiquido,
                 Descuento = descuento,
                 LiquidaCon = liquidaCon,

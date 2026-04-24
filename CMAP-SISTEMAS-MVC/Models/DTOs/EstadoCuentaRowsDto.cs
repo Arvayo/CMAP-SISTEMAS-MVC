@@ -113,5 +113,7 @@
         /// Indica si el préstamo está vigente.
         /// </summary>
         public bool EstaVigente { get; set; }
+
+        public decimal TasaInteres { get; set; }
     }
 }

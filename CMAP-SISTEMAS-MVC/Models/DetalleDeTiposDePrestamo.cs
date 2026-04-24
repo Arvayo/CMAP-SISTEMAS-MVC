@@ -26,6 +26,6 @@
 
         public int? SubCve { get; set; }
 
-        public int NombrePrestamo { get; set; }
+        public string? NombrePrestamo { get; set; }
     }
 }
