@@ -49,25 +49,57 @@ namespace CMAP_SISTEMAS_MVC.Services
 
             var resultado = new ResultadoPrestamoPersonalDto();
 
-            // Caso 1: hay préstamo personal vigente
+            /* ============================================================
+            * CASO 1: HAY PRÉSTAMO PERSONAL VIGENTE
+            * ============================================================
+            * Regla VB:
+            * - El PP vigente SIEMPRE debe mostrarse en la tabla general.
+            * - Si puede renovar, además se muestran las proyecciones por modalidad.
+            * - Si NO puede renovar, se conserva por lo menos una fila base
+            *   para que EstadoCuentaService pueda agregar "PERSONAL" a
+            *   Información de Préstamos.
+            * ============================================================ */
             if (prestamoPP != null)
             {
                 var resumen = ConstruirResumenPrestamoPersonal(contexto, tiposPP, prestamoPP);
                 resultado.Resumen = resumen;
 
-                // Solo si puede renovar mostramos proyección
-                if (resumen.PuedeRenovar)
+                var tipoBase = tiposPP
+                    .OrderBy(x => x.SubCve)
+                    .FirstOrDefault();
+
+                if (tipoBase != null)
                 {
-                    foreach (var tipo in tiposPP)
+                    if (resumen.PuedeRenovar)
                     {
-                        var fila = await ConstruirFilaPrestamoPersonalAsync(
+                        foreach (var tipo in tiposPP)
+                        {
+                            var fila = await ConstruirFilaPrestamoPersonalAsync(
+                                contexto,
+                                tipo,
+                                prestamoPP);
+
+                            if (fila != null)
+                            {
+                                resultado.FilasProyeccion.Add(fila);
+                            }
+                        }
+                    }
+                    else
+                    {
+                        var filaVigente = await ConstruirFilaPrestamoPersonalAsync(
                             contexto,
-                            tipo,
+                            tipoBase,
                             prestamoPP);
 
-                        if (fila != null)
+                        if (filaVigente != null)
                         {
-                            resultado.FilasProyeccion.Add(fila);
+                            filaVigente.NombrePrestamo = "PERSONAL";
+                            filaVigente.ClavePrestamo = "PP";
+                            filaVigente.EstaVigente = true;
+                            filaVigente.EsProyeccion = false;
+
+                            resultado.FilasProyeccion.Add(filaVigente);
                         }
                     }
                 }
@@ -332,13 +364,16 @@ namespace CMAP_SISTEMAS_MVC.Services
                 puedeRenovar = PuedeRenovarPrestamoPersonal(ctx, tipo, prestamoPP!);
 
                 // Si tiene préstamo vigente y no puede renovar,
-                // no se deben mostrar subclaves proyectadas.
+                // se conserva la fila del préstamo vigente,
+                // pero sin importes de nueva proyección.
                 if (!puedeRenovar)
                 {
-                    // 🔥 VB muestra filas aunque no pueda renovar
-                    puedeSolicitar = 0;
-                    importeLiquido = 0;
-                    descuento = 0;
+                    puedeSolicitar = 0m;
+                    importeLiquido = 0m;
+
+                    descuento = prestamoPP.ImporteAmortizacion > 0
+                        ? prestamoPP.ImporteAmortizacion
+                        : Math.Round(importePrestamo / (tipo.PlazoRenovar > 0 ? tipo.PlazoRenovar : 1), 2);
                 }
             }
 

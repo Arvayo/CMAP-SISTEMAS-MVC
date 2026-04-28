@@ -300,10 +300,10 @@ namespace CMAP_SISTEMAS_MVC.Services
          * SECCIÓN C: CÁLCULO DE ALCANCE
          * ============================================================ */
         private (decimal puedeSolicitar, decimal importeLiquido) CalcularAlcanceNoPersonal(
-            EstadoCuentaContextDto ctx,
-            TipoPrestamoDto tipo,
-            decimal saldoActualDelTipo,
-            int plazoMeses)
+     EstadoCuentaContextDto ctx,
+     TipoPrestamoDto tipo,
+     decimal saldoActualDelTipo,
+     int plazoMeses)
         {
             if (tipo.Vigente != "S")
                 return (0m, 0m);
@@ -311,55 +311,157 @@ namespace CMAP_SISTEMAS_MVC.Services
             if (tipo.MesesMinCotizados > 0 && ctx.MesesCot < tipo.MesesMinCotizados)
                 return (0m, 0m);
 
-            decimal topeGlobalDisponible;
+            int numeroPagos = ctx.Estatus == "A"
+                ? plazoMeses * 2
+                : plazoMeses;
 
-            if (ctx.EsSolicitudEspecial)
+            if (numeroPagos <= 0)
+                return (0m, 0m);
+
+            decimal amortAnt = saldoActualDelTipo > 0 ? saldoActualDelTipo : 0m;
+
+            decimal alcanceAhorro = CalcularAlcancePorAhorro(ctx, tipo);
+            decimal alcanceTotal = CalcularAlcanceTotal(ctx, tipo, amortAnt, numeroPagos);
+
+            decimal puedeSolicitar = alcanceAhorro > 0
+                ? Math.Min(alcanceAhorro, alcanceTotal)
+                : alcanceTotal;
+
+            if (!ctx.EsSolicitudEspecial)
             {
-                topeGlobalDisponible = decimal.MaxValue;
+                decimal topeGlobal = ctx.MisAhorros * 3.5m;
+                decimal disponibleGlobal = topeGlobal - ctx.SaldoPrestamosTopadosAhorro + saldoActualDelTipo;
+
+                if (disponibleGlobal < 0)
+                    disponibleGlobal = 0m;
+
+                puedeSolicitar = Math.Min(puedeSolicitar, disponibleGlobal);
             }
-            else
-            {
-                decimal topeGlobal = _prestamoCalculatorService
-                    .CalcularTopePorAhorros(ctx.MisAhorros, 3.5m);
-
-                topeGlobalDisponible = topeGlobal - ctx.SaldoPrestamosTopadosAhorro;
-
-                // Evita castigar doble si el tipo ya tiene saldo vigente
-                topeGlobalDisponible += saldoActualDelTipo;
-
-                if (topeGlobalDisponible < 0)
-                    topeGlobalDisponible = 0m;
-            }
-
-            decimal vecesAhorro = tipo.VecesAhorro > 0 ? tipo.VecesAhorro : 3.5m;
-
-            decimal topeProducto = _prestamoCalculatorService.CalcularTopePorAhorros(
-                ctx.MisAhorros,
-                vecesAhorro);
-
-            if (tipo.MontoMaximo > 0)
-                topeProducto = Math.Min(topeProducto, tipo.MontoMaximo);
-
-            if (tipo.FactorSobreAhorro > 0)
-            {
-                decimal topeFactor = ctx.MisAhorros * tipo.FactorSobreAhorro;
-                topeProducto = Math.Min(topeProducto, topeFactor);
-            }
-
-            decimal puedeSolicitar = Math.Min(topeGlobalDisponible, topeProducto);
 
             if (puedeSolicitar < 0)
                 puedeSolicitar = 0m;
 
-            decimal importeLiquido = CalcularImporteLiquidoEstimado(
-                puedeSolicitar,
+            puedeSolicitar = Math.Round(puedeSolicitar, 2);
+
+            decimal importeLiquido = CalcularImporteLiquidoPrestamo(
+                ctx,
                 tipo,
-                plazoMeses);
+                puedeSolicitar,
+                numeroPagos,
+                saldoActualDelTipo);
 
             return (
-                Math.Round(puedeSolicitar, 2),
+                puedeSolicitar,
                 Math.Round(importeLiquido, 2)
             );
+        }
+
+        private decimal CalcularAlcancePorAhorro(
+            EstadoCuentaContextDto ctx,
+            TipoPrestamoDto tipo)
+        {
+            decimal alcance = 0m;
+
+            if (tipo.FactorSobreAhorro > 0)
+                alcance = ctx.MisAhorros * tipo.FactorSobreAhorro;
+            else if (tipo.VecesAhorro > 0)
+                alcance = ctx.MisAhorros * tipo.VecesAhorro;
+
+            return AplicarMontoMaximo(alcance, tipo);
+        }
+
+        private decimal CalcularAlcanceTotal(
+            EstadoCuentaContextDto ctx,
+            TipoPrestamoDto tipo,
+            decimal amortAnt,
+            int numeroPagos)
+        {
+            decimal sueldoDisponible = Math.Round(ctx.TotSueldo - ctx.ElLimite, 2);
+
+            /*
+             * Equivalente VB:
+             * If Not TipoAlcance = "A" Then
+             *     snSueldo = Round(snSueldo - Limite, 2)
+             * End If
+             *
+             * En tu MVC necesitamos que ctx.SueldoLiquido ya represente
+             * el sueldo después del límite mínimo permitido.
+             */
+
+            if (sueldoDisponible < 0)
+                return 0m;
+
+            decimal alcanceTotal = (sueldoDisponible + amortAnt) * numeroPagos;
+
+            return AplicarMontoMaximo(alcanceTotal, tipo);
+        }
+
+        private decimal AplicarMontoMaximo(decimal alcance, TipoPrestamoDto tipo)
+        {
+            if (alcance < 0)
+                return 0m;
+
+            if (tipo.MontoMaximo > 0 && alcance > tipo.MontoMaximo)
+                return tipo.MontoMaximo;
+
+            return Math.Round(alcance, 2);
+        }
+
+        private decimal CalcularImporteLiquidoPrestamo(
+            EstadoCuentaContextDto ctx,
+            TipoPrestamoDto tipo,
+            decimal capital,
+            int numeroPagos,
+            decimal saldoPrestamo)
+        {
+            if (capital <= 0 || numeroPagos <= 0)
+                return 0m;
+
+            decimal tasaPeriodo = ctx.Estatus == "A"
+                ? tipo.TasaIntNormal / 2400m
+                : tipo.TasaIntNormal / 1200m;
+
+            if (tasaPeriodo <= 0)
+                return Math.Max(0m, Math.Round(capital - saldoPrestamo, 2));
+
+            decimal tasaElevada = TasaElevada(tasaPeriodo, numeroPagos);
+
+            decimal factorSeguroFondo =
+                1m +
+                (tipo.PorcenSeguroPasivo / 100m) +
+                (AplicaFondoGarantia(tipo) ? tipo.PorcenFondoGarantia / 100m : 0m);
+
+            decimal solicitadoSinSeguro = Math.Round(capital / factorSeguroFondo, 2);
+
+            decimal amortizacionParcial = solicitadoSinSeguro / numeroPagos;
+
+            decimal liquidoBruto = Math.Round(
+                (amortizacionParcial * (tasaElevada - 1m)) /
+                (tasaPeriodo * tasaElevada),
+                2);
+
+            decimal bonificaSeguroPasivo = 0m;
+            decimal bonificaIntereses = 0m;
+            decimal interesesMoratorios = 0m;
+
+            decimal importeLiquido =
+                liquidoBruto -
+                (saldoPrestamo - bonificaSeguroPasivo - bonificaIntereses - interesesMoratorios);
+
+            if (importeLiquido < 0)
+                importeLiquido = 0m;
+
+            return Math.Round(importeLiquido, 2);
+        }
+
+        private decimal TasaElevada(decimal tasaPeriodo, int numeroPagos)
+        {
+            return (decimal)Math.Pow((double)(1m + tasaPeriodo), numeroPagos);
+        }
+
+        private bool AplicaFondoGarantia(TipoPrestamoDto tipo)
+        {
+            return tipo.PorcenFondoGarantia > 0;
         }
 
         private decimal CalcularImporteLiquidoEstimado(
