@@ -186,22 +186,22 @@ namespace CMAP_SISTEMAS_MVC.Services
          * SECCIÓN B: PROYECCIONES
          * ============================================================ */
         /* ============================================================
-  * SECCIÓN B: PROYECCIONES
-  * ============================================================
-  * Temporalmente desactivado.
-  *
-  * Motivo:
-  * Las proyecciones hardcodeadas generaban duplicados e importes
-  * incorrectos en Estado de Cuenta.
-  *
-  * Siguiente etapa:
-  * Generar estas filas desde:
-  * - TABLA_DE_TIPOS_DE_PRESTAMOS
-  * - DETALLE_DE_TIPOS_DE_PRESTAMOS
-  *
-  * No eliminar todavía CrearFilaProyectada, porque se reutilizará
-  * cuando reconstruyamos la lógica de proyecciones desde BD.
-  * ============================================================ */
+         * SECCIÓN B: PROYECCIONES
+        * ============================================================
+        * Temporalmente desactivado.
+        *
+        * Motivo:
+        * Las proyecciones hardcodeadas generaban duplicados e importes
+        * incorrectos en Estado de Cuenta.
+        *
+        * Siguiente etapa:
+        * Generar estas filas desde:
+        * - TABLA_DE_TIPOS_DE_PRESTAMOS
+        * - DETALLE_DE_TIPOS_DE_PRESTAMOS
+        *
+        * No eliminar todavía CrearFilaProyectada, porque se reutilizará
+        * cuando reconstruyamos la lógica de proyecciones desde BD.
+        * ============================================================ */
         private void AgregarFilasProyectadas(
             EstadoCuentaContextDto ctx,
             List<EstadoCuentaRowsDto> resultado,
@@ -300,10 +300,10 @@ namespace CMAP_SISTEMAS_MVC.Services
          * SECCIÓN C: CÁLCULO DE ALCANCE
          * ============================================================ */
         private (decimal puedeSolicitar, decimal importeLiquido) CalcularAlcanceNoPersonal(
-     EstadoCuentaContextDto ctx,
-     TipoPrestamoDto tipo,
-     decimal saldoActualDelTipo,
-     int plazoMeses)
+        EstadoCuentaContextDto ctx,
+        TipoPrestamoDto tipo,
+        decimal saldoActualDelTipo,
+        int plazoMeses)
         {
             if (tipo.Vigente != "S")
                 return (0m, 0m);
@@ -326,6 +326,39 @@ namespace CMAP_SISTEMAS_MVC.Services
             decimal puedeSolicitar = alcanceAhorro > 0
                 ? Math.Min(alcanceAhorro, alcanceTotal)
                 : alcanceTotal;
+
+            if (tipo.ClavePrestamo == "EV")
+            {
+                decimal importeLiquidoEv = puedeSolicitar - saldoActualDelTipo;
+
+                if (importeLiquidoEv < 0)
+                    importeLiquidoEv = 0m;
+
+                decimal tasaPeriodo = ctx.Estatus == "A"
+                    ? tipo.TasaIntNormal / 2400m
+                    : tipo.TasaIntNormal / 1200m;
+
+                decimal baseCalculo = alcanceTotal; // 👈 ESTE ES EL CAMBIO CLAVE
+
+                decimal interesesEv = CalcularInteresAPrestamo(
+                    baseCalculo,
+                    tasaPeriodo,
+                    numeroPagos);
+
+                decimal seguroEv = tipo.PorcenSeguroPasivo > 0
+                    ? Math.Round((baseCalculo + interesesEv) * (tipo.PorcenSeguroPasivo / 100m), 2)
+                    : 0m;
+
+                decimal fondoEv = tipo.PorcenFondoGarantia > 0
+                    ? Math.Round((baseCalculo + interesesEv) * (tipo.PorcenFondoGarantia / 100m), 2)
+                    : 0m;
+
+                puedeSolicitar = Math.Round(
+                    baseCalculo + interesesEv + seguroEv + fondoEv,
+                    2);
+
+                return (puedeSolicitar, Math.Round(importeLiquidoEv, 2));
+            }
 
             if (!ctx.EsSolicitudEspecial)
             {
@@ -354,6 +387,31 @@ namespace CMAP_SISTEMAS_MVC.Services
                 puedeSolicitar,
                 Math.Round(importeLiquido, 2)
             );
+        }
+
+        private decimal CalcularInteresAPrestamo(
+        decimal importePrestamo,
+        decimal tasaPeriodo,
+        int numeroPagos)
+        {
+            if (importePrestamo <= 0 || tasaPeriodo <= 0 || numeroPagos <= 0)
+                return 0m;
+
+            // 🔥 NUEVO: redondeo del monto antes de todo
+            importePrestamo = Math.Round(importePrestamo, 2);
+
+            decimal factor = (decimal)Math.Pow((double)(1m + tasaPeriodo), numeroPagos);
+
+            decimal pagoNivelado = importePrestamo * tasaPeriodo * factor / (factor - 1m);
+
+            // 🔥 VB SIEMPRE REDONDEA AQUÍ
+            pagoNivelado = Math.Round(pagoNivelado, 2);
+
+            decimal totalPagado = pagoNivelado * numeroPagos;
+
+            decimal intereses = totalPagado - importePrestamo;
+
+            return Math.Round(intereses, 2);
         }
 
         private decimal CalcularAlcancePorAhorro(
