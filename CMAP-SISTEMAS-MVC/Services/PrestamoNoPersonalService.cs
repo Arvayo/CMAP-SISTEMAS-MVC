@@ -10,11 +10,19 @@ namespace CMAP_SISTEMAS_MVC.Services
     /// ============================================================
     /// SERVICIO: PrestamoNoPersonalService
     /// ------------------------------------------------------------
-    /// Encapsula la lógica de préstamos NO personales:
-    ///  - obtener tipos de préstamo
-    ///  - obtener préstamos vigentes
-    ///  - construir filas del estado de cuenta
-    ///  - generar proyecciones temporales
+    /// Encapsula la lógica de préstamos NO personales para Estado
+    /// de Cuenta.
+    ///
+    /// Flujo general:
+    ///  1. Obtener préstamos vigentes del socio
+    ///  2. Obtener tipos de préstamo aplicables
+    ///  3. Construir filas visibles del Estado de Cuenta
+    ///  4. Calcular alcance / puede solicitar
+    ///  5. Calcular importe líquido
+    ///
+    /// Referencias VB replicadas:
+    ///  - DameMenorAlcance
+    ///  - ImporteLiquidoDePrestamo
     /// ============================================================
     /// </summary>
     public class PrestamoNoPersonalService : IPrestamoNoPersonalService
@@ -22,12 +30,14 @@ namespace CMAP_SISTEMAS_MVC.Services
         /* ============================================================
          * CAMPOS PRIVADOS
          * ============================================================ */
+
         private readonly Cmap54SistemasContext _context;
         private readonly IPrestamoCalculatorService _prestamoCalculatorService;
 
         /* ============================================================
          * CONSTRUCTOR
          * ============================================================ */
+
         public PrestamoNoPersonalService(
             Cmap54SistemasContext context,
             IPrestamoCalculatorService prestamoCalculatorService)
@@ -39,26 +49,35 @@ namespace CMAP_SISTEMAS_MVC.Services
         /* ============================================================
          * API PÚBLICA
          * ============================================================ */
+
         public async Task<List<EstadoCuentaRowsDto>> GenerarPrestamosNoPersonalesAsync(
-        EstadoCuentaContextDto contexto)
+            EstadoCuentaContextDto contexto)
         {
             var prestamosVigentes = await ObtenerPrestamosVigentesAsync(
                 contexto.ClavePension,
                 contexto.FechaSistema);
 
-            var tiposPrestamo = await ObtenerTiposPrestamoAsync(contexto, prestamosVigentes);
+            var tiposPrestamo = await ObtenerTiposPrestamoAsync(
+                contexto,
+                prestamosVigentes);
 
             var resultado = new List<EstadoCuentaRowsDto>();
 
             foreach (var tipo in tiposPrestamo)
             {
-                var fila = ConstruirFilaPorTipo(contexto, tipo, prestamosVigentes);
+                var fila = ConstruirFilaPorTipo(
+                    contexto,
+                    tipo,
+                    prestamosVigentes);
 
                 if (fila != null)
                     resultado.Add(fila);
             }
 
-            AgregarFilasProyectadas(contexto, resultado, prestamosVigentes);
+            AgregarFilasProyectadas(
+                contexto,
+                resultado,
+                prestamosVigentes);
 
             return resultado
                 .OrderBy(x => x.OrdenVisual)
@@ -67,12 +86,13 @@ namespace CMAP_SISTEMAS_MVC.Services
         }
 
         /* ============================================================
-         * SECCIÓN A: CONSTRUCCIÓN DE FILAS
+         * SECCIÓN 1: CONSTRUCCIÓN DE FILAS DEL ESTADO DE CUENTA
          * ============================================================ */
+
         private EstadoCuentaRowsDto? ConstruirFilaPorTipo(
-        EstadoCuentaContextDto ctx,
-        TipoPrestamoDto tipo,
-        List<PrestamoVigenteDto> vigentes)
+            EstadoCuentaContextDto ctx,
+            TipoPrestamoDto tipo,
+            List<PrestamoVigenteDto> vigentes)
         {
             List<PrestamoVigenteDto> prestamosDelTipo;
 
@@ -91,7 +111,6 @@ namespace CMAP_SISTEMAS_MVC.Services
                     .ToList();
             }
 
-            // Para PP, si por alguna razón existen varios vigentes, tomamos el más reciente.
             if (tipo.ClavePrestamo == "PP" && prestamosDelTipo.Any())
             {
                 prestamosDelTipo = prestamosDelTipo
@@ -111,7 +130,6 @@ namespace CMAP_SISTEMAS_MVC.Services
             DateTime? fechaPrestamo = prestamoPrincipal?.FechaPrestamo;
             DateTime? fechaVencimiento = prestamoPrincipal?.FechaVencimiento;
 
-            bool tieneRegistroVigente = prestamoPrincipal != null;
             bool estaVigente = prestamoPrincipal != null && prestamoPrincipal.SaldoPrestamo > 0;
             bool realizarProyeccion = !estaVigente && tipo.Vigente == "S";
             bool esProyeccion = realizarProyeccion;
@@ -119,14 +137,10 @@ namespace CMAP_SISTEMAS_MVC.Services
             var soloMostrarSiVigente = new[] { "GM", "EX", "PH" };
 
             if (soloMostrarSiVigente.Contains(tipo.ClavePrestamo) && !estaVigente)
-            {
                 return null;
-            }
 
             if (!estaVigente && !realizarProyeccion)
-            {
                 return null;
-            }
 
             decimal descuento = 0m;
 
@@ -150,9 +164,7 @@ namespace CMAP_SISTEMAS_MVC.Services
             }
 
             if (estaVigente)
-            {
                 importeLiquido = 0m;
-            }
 
             int subClave = prestamoPrincipal?.SubCve ?? tipo.SubCve ?? 0;
 
@@ -183,127 +195,38 @@ namespace CMAP_SISTEMAS_MVC.Services
         }
 
         /* ============================================================
-         * SECCIÓN B: PROYECCIONES
+         * SECCIÓN 2: CÁLCULO DE ALCANCE
          * ============================================================ */
-        /* ============================================================
-         * SECCIÓN B: PROYECCIONES
-        * ============================================================
-        * Temporalmente desactivado.
-        *
-        * Motivo:
-        * Las proyecciones hardcodeadas generaban duplicados e importes
-        * incorrectos en Estado de Cuenta.
-        *
-        * Siguiente etapa:
-        * Generar estas filas desde:
-        * - TABLA_DE_TIPOS_DE_PRESTAMOS
-        * - DETALLE_DE_TIPOS_DE_PRESTAMOS
-        *
-        * No eliminar todavía CrearFilaProyectada, porque se reutilizará
-        * cuando reconstruyamos la lógica de proyecciones desde BD.
-        * ============================================================ */
-        private void AgregarFilasProyectadas(
-            EstadoCuentaContextDto ctx,
-            List<EstadoCuentaRowsDto> resultado,
-            List<PrestamoVigenteDto> vigentes)
-        {
-            // Intencionalmente vacío por ahora.
-        }
-
-        private EstadoCuentaRowsDto CrearFilaProyectada(
-            EstadoCuentaContextDto ctx,
-            string clavePrestamo,
-            int subClave,
-            string nombrePrestamo,
-            int plazoMeses,
-            decimal montoMaximo,
-            decimal tasa,
-            decimal seguro,
-            decimal fondo)
-        {
-            var tipoTemp = new TipoPrestamoDto
-            {
-                ClavePrestamo = clavePrestamo,
-                SubCve = subClave,
-                NombrePrestamo = nombrePrestamo,
-                PlazoMaximo = plazoMeses,
-                MontoMaximo = montoMaximo,
-                TasaIntNormal = tasa,
-                PorcenSeguroPasivo = seguro,
-                PorcenFondoGarantia = fondo,
-                VecesAhorro = 3.5m,
-                Vigente = "S",
-                MesesMinCotizados = 6
-            };
-
-            var (puedeSolicitar, importeLiquido) = CalcularAlcanceNoPersonal(
-                ctx,
-                tipoTemp,
-                0m,
-                plazoMeses);
-
-            decimal descuento = 0m;
-
-            if (plazoMeses > 0)
-            {
-                descuento = Math.Round(puedeSolicitar / plazoMeses, 2);
-            }
-
-            return new EstadoCuentaRowsDto
-            {
-                IdReporte = ctx.IdReporte,
-                ClavePension = ctx.ClavePension,
-
-                ClavePrestamo = clavePrestamo,
-                SubClave = subClave,
-                NombrePrestamo = nombrePrestamo,
-
-                FechaPrestamo = null,
-                ImportePrestamo = 0m,
-                PlazoMeses = plazoMeses,
-                FechaVencimiento = null,
-
-                SaldoPrestamo = 0m,
-                CantidadPuedeSolicitar = puedeSolicitar,
-
-                ImporteLiquido = importeLiquido,
-                Descuento = descuento,
-                LiquidaCon = 0m,
-
-                EstaVigente = false,
-                EsProyeccion = true,
-                OrdenVisual = ObtenerOrdenVisual(clavePrestamo, subClave)
-            };
-        }
-
-        private void AgregarFilaSiNoExiste(
-            List<EstadoCuentaRowsDto> resultado,
-            EstadoCuentaRowsDto nuevaFila)
-        {
-            bool existe = resultado.Any(x =>
-                x.ClavePrestamo == nuevaFila.ClavePrestamo &&
-                NormalizarSubClave(x.ClavePrestamo, x.SubClave) ==
-                NormalizarSubClave(nuevaFila.ClavePrestamo, nuevaFila.SubClave));
-
-            if (!existe)
-            {
-                resultado.Add(nuevaFila);
-            }
-        }
-
-        private int NormalizarSubClave(string clavePrestamo, int? subClave)
-        {
-            return subClave ?? 0;
-        }
 
         /* ============================================================
-         * SECCIÓN C: CÁLCULO DE ALCANCE
+         * VB: DameMenorAlcance
+         * ------------------------------------------------------------
+         * Calcula cuánto puede solicitar el socio.
+         *
+         * Compara:
+         *  1. Alcance por ahorro
+         *  2. Alcance por sueldo / capacidad de pago
+         *
+         * Regla principal:
+         *  - Se toma el menor alcance disponible.
+         *
+         * También valida:
+         *  - Vigencia del tipo de préstamo
+         *  - Meses mínimos cotizados
+         *  - Número de pagos según estatus
+         *  - Delegación al cálculo general o al cálculo de Eventos Sociales
+         *
+         * Caso especial EV EventosSociales:
+         *  - EV replica lógica especial de VB.
+         *  - Usa alcancePorSueldo como baseCalculo.
+         *  - Recalcula puedeSolicitar sumando intereses, seguro y fondo.
          * ============================================================ */
+
         private (decimal puedeSolicitar, decimal importeLiquido) CalcularAlcanceNoPersonal(
-        EstadoCuentaContextDto ctx,
-        TipoPrestamoDto tipo,
-        decimal saldoActualDelTipo,
-        int plazoMeses)
+            EstadoCuentaContextDto ctx,
+            TipoPrestamoDto tipo,
+            decimal saldoActualDelTipo,
+            int plazoMeses)
         {
             if (tipo.Vigente != "S")
                 return (0m, 0m);
@@ -311,59 +234,78 @@ namespace CMAP_SISTEMAS_MVC.Services
             if (tipo.MesesMinCotizados > 0 && ctx.MesesCot < tipo.MesesMinCotizados)
                 return (0m, 0m);
 
-            int numeroPagos = ctx.Estatus == "A"
-                ? plazoMeses * 2
-                : plazoMeses;
+            int numeroPagos = CalcularNumeroPagos(ctx, plazoMeses);
 
             if (numeroPagos <= 0)
                 return (0m, 0m);
 
             decimal amortAnt = saldoActualDelTipo > 0 ? saldoActualDelTipo : 0m;
 
-            decimal alcanceAhorro = CalcularAlcancePorAhorro(ctx, tipo);
-            decimal alcanceTotal = CalcularAlcanceTotal(ctx, tipo, amortAnt, numeroPagos);
+            decimal alcancePorAhorro = CalcularAlcancePorAhorro(ctx, tipo);
 
-            decimal puedeSolicitar = alcanceAhorro > 0
-                ? Math.Min(alcanceAhorro, alcanceTotal)
-                : alcanceTotal;
+            decimal alcancePorSueldo = CalcularAlcancePorSueldo(
+                ctx,
+                tipo,
+                amortAnt,
+                numeroPagos);
+
+            decimal puedeSolicitar = ObtenerMenorAlcance(
+                alcancePorAhorro,
+                alcancePorSueldo);
 
             if (tipo.ClavePrestamo == "EV")
             {
-                decimal importeLiquidoEv = puedeSolicitar - saldoActualDelTipo;
-
-                if (importeLiquidoEv < 0)
-                    importeLiquidoEv = 0m;
-
-                decimal tasaPeriodo = ctx.Estatus == "A"
-                    ? tipo.TasaIntNormal / 2400m
-                    : tipo.TasaIntNormal / 1200m;
-
-                decimal baseCalculo = alcanceTotal; // 👈 ESTE ES EL CAMBIO CLAVE
-
-                decimal interesesEv = CalcularInteresAPrestamo(
-                    baseCalculo,
-                    tasaPeriodo,
-                    numeroPagos);
-
-                decimal seguroEv = tipo.PorcenSeguroPasivo > 0
-                    ? Math.Round((baseCalculo + interesesEv) * (tipo.PorcenSeguroPasivo / 100m), 2)
-                    : 0m;
-
-                decimal fondoEv = tipo.PorcenFondoGarantia > 0
-                    ? Math.Round((baseCalculo + interesesEv) * (tipo.PorcenFondoGarantia / 100m), 2)
-                    : 0m;
-
-                puedeSolicitar = Math.Round(
-                    baseCalculo + interesesEv + seguroEv + fondoEv,
-                    2);
-
-                return (puedeSolicitar, Math.Round(importeLiquidoEv, 2));
+                return CalcularAlcanceEventosSociales(
+                    ctx,
+                    tipo,
+                    saldoActualDelTipo,
+                    numeroPagos,
+                    alcancePorSueldo,
+                    puedeSolicitar);
             }
 
+            return CalcularAlcanceGeneralNoPersonal(
+                ctx,
+                tipo,
+                puedeSolicitar,
+                numeroPagos,
+                saldoActualDelTipo);
+        }
+
+        private int CalcularNumeroPagos(
+            EstadoCuentaContextDto ctx,
+            int plazoMeses)
+        {
+            return ctx.Estatus == "A"
+                ? plazoMeses * 2
+                : plazoMeses;
+        }
+
+        /* ============================================================
+        * Cálculo general para préstamos NO personales
+        * ------------------------------------------------------------
+        * Aplica:
+        * - Tope global por ahorro (3.5x)
+        * - Cálculo de importe líquido general
+        *
+        * Este flujo aplica para todos los préstamos excepto EV.
+        * ============================================================ */
+
+        private (decimal puedeSolicitar, decimal importeLiquido) CalcularAlcanceGeneralNoPersonal(
+            EstadoCuentaContextDto ctx,
+            TipoPrestamoDto tipo,
+            decimal puedeSolicitar,
+            int numeroPagos,
+            decimal saldoActualDelTipo)
+        {
             if (!ctx.EsSolicitudEspecial)
             {
                 decimal topeGlobal = ctx.MisAhorros * 3.5m;
-                decimal disponibleGlobal = topeGlobal - ctx.SaldoPrestamosTopadosAhorro + saldoActualDelTipo;
+
+                decimal disponibleGlobal =
+                    topeGlobal -
+                    ctx.SaldoPrestamosTopadosAhorro +
+                    saldoActualDelTipo;
 
                 if (disponibleGlobal < 0)
                     disponibleGlobal = 0m;
@@ -389,30 +331,38 @@ namespace CMAP_SISTEMAS_MVC.Services
             );
         }
 
-        private decimal CalcularInteresAPrestamo(
-        decimal importePrestamo,
-        decimal tasaPeriodo,
-        int numeroPagos)
+        /* ============================================================
+         * VB: DameMenorAlcance
+         * ------------------------------------------------------------
+         * Esta parte representa directamente la selección del menor
+         * alcance entre:
+         *
+         *  - alcance por ahorro
+         *  - alcance por sueldo
+         *
+         * Si no existe alcance por ahorro, se usa alcance por sueldo.
+         * ============================================================ */
+
+        private decimal ObtenerMenorAlcance(
+            decimal alcancePorAhorro,
+            decimal alcancePorSueldo)
         {
-            if (importePrestamo <= 0 || tasaPeriodo <= 0 || numeroPagos <= 0)
-                return 0m;
-
-            // 🔥 NUEVO: redondeo del monto antes de todo
-            importePrestamo = Math.Round(importePrestamo, 2);
-
-            decimal factor = (decimal)Math.Pow((double)(1m + tasaPeriodo), numeroPagos);
-
-            decimal pagoNivelado = importePrestamo * tasaPeriodo * factor / (factor - 1m);
-
-            // 🔥 VB SIEMPRE REDONDEA AQUÍ
-            pagoNivelado = Math.Round(pagoNivelado, 2);
-
-            decimal totalPagado = pagoNivelado * numeroPagos;
-
-            decimal intereses = totalPagado - importePrestamo;
-
-            return Math.Round(intereses, 2);
+            return alcancePorAhorro > 0
+                ? Math.Min(alcancePorAhorro, alcancePorSueldo)
+                : alcancePorSueldo;
         }
+
+        /* ============================================================
+         * VB: Alcance por ahorro
+         * ------------------------------------------------------------
+         * Calcula el alcance basado en los ahorros del socio.
+         *
+         * Puede usar:
+         *  - FactorSobreAhorro
+         *  - VecesAhorro
+         *
+         * Al final aplica MontoMaximo si existe.
+         * ============================================================ */
 
         private decimal CalcularAlcancePorAhorro(
             EstadoCuentaContextDto ctx,
@@ -428,7 +378,23 @@ namespace CMAP_SISTEMAS_MVC.Services
             return AplicarMontoMaximo(alcance, tipo);
         }
 
-        private decimal CalcularAlcanceTotal(
+        /* ============================================================
+         * VB: Alcance por sueldo / capacidad de pago
+         * ------------------------------------------------------------
+         * Fórmula replicada:
+         *
+         *  sueldoDisponible = TotSueldo - ElLimite
+         *  alcance = (sueldoDisponible + amortAnt) * numeroPagos
+         *
+         * Donde:
+         *  - TotSueldo representa el sueldo considerado
+         *  - ElLimite representa el mínimo que debe quedar libre
+         *  - amortAnt representa la amortización/saldo anterior
+         *
+         * Al final aplica MontoMaximo si existe.
+         * ============================================================ */
+
+        private decimal CalcularAlcancePorSueldo(
             EstadoCuentaContextDto ctx,
             TipoPrestamoDto tipo,
             decimal amortAnt,
@@ -436,25 +402,17 @@ namespace CMAP_SISTEMAS_MVC.Services
         {
             decimal sueldoDisponible = Math.Round(ctx.TotSueldo - ctx.ElLimite, 2);
 
-            /*
-             * Equivalente VB:
-             * If Not TipoAlcance = "A" Then
-             *     snSueldo = Round(snSueldo - Limite, 2)
-             * End If
-             *
-             * En tu MVC necesitamos que ctx.SueldoLiquido ya represente
-             * el sueldo después del límite mínimo permitido.
-             */
-
             if (sueldoDisponible < 0)
                 return 0m;
 
-            decimal alcanceTotal = (sueldoDisponible + amortAnt) * numeroPagos;
+            decimal alcancePorSueldo = (sueldoDisponible + amortAnt) * numeroPagos;
 
-            return AplicarMontoMaximo(alcanceTotal, tipo);
+            return AplicarMontoMaximo(alcancePorSueldo, tipo);
         }
 
-        private decimal AplicarMontoMaximo(decimal alcance, TipoPrestamoDto tipo)
+        private decimal AplicarMontoMaximo(
+            decimal alcance,
+            TipoPrestamoDto tipo)
         {
             if (alcance < 0)
                 return 0m;
@@ -464,6 +422,111 @@ namespace CMAP_SISTEMAS_MVC.Services
 
             return Math.Round(alcance, 2);
         }
+
+        private decimal AplicarTopeGlobalPorAhorro(
+            EstadoCuentaContextDto ctx,
+            decimal puedeSolicitar,
+            decimal saldoActualDelTipo)
+        {
+            decimal topeGlobal = ctx.MisAhorros * 3.5m;
+
+            decimal disponibleGlobal =
+                topeGlobal -
+                ctx.SaldoPrestamosTopadosAhorro +
+                saldoActualDelTipo;
+
+            if (disponibleGlobal < 0)
+                disponibleGlobal = 0m;
+
+            return Math.Min(puedeSolicitar, disponibleGlobal);
+        }
+
+        /* ============================================================
+         * SECCIÓN 3: CASOS ESPECIALES DE ALCANCE
+         * ============================================================ */
+
+        /* ============================================================
+         * VB: Caso especial EV
+         * ------------------------------------------------------------
+         * EV no se comporta igual que los préstamos normales.
+         *
+         * Lógica replicada:
+         *  1. Se obtiene el importe líquido inicial:
+         *      importeLiquidoEv = puedeSolicitar - saldoActualDelTipo
+         *
+         *  2. Se usa alcancePorSueldo como base del cálculo.
+         *
+         *  3. Se calculan:
+         *      - intereses
+         *      - seguro pasivo
+         *      - fondo de garantía
+         *
+         *  4. PuedeSolicitar se recalcula:
+         *      baseCalculo + intereses + seguro + fondo
+         *
+         * Pendiente:
+         *  - Integrar DiasAdic para cerrar diferencia contra VB.
+         * ============================================================ */
+
+        private (decimal puedeSolicitar, decimal importeLiquido) CalcularAlcanceEventosSociales(
+        EstadoCuentaContextDto ctx,
+        TipoPrestamoDto tipo,
+        decimal saldoActualDelTipo,
+        int numeroPagos,
+        decimal alcancePorSueldo,
+        decimal puedeSolicitarInicial)
+        {
+            decimal importeLiquidoEv = CalcularImporteLiquidoEventosSociales(
+                puedeSolicitarInicial,
+                saldoActualDelTipo);
+
+            decimal tasaPeriodo = ObtenerTasaPeriodo(ctx, tipo);
+
+            decimal baseCalculo = alcancePorSueldo;
+
+            decimal interesesEv = CalcularInteresAPrestamo(
+                baseCalculo,
+                tasaPeriodo,
+                numeroPagos);
+
+            decimal seguroEv = CalcularSeguroPasivo(
+                baseCalculo,
+                interesesEv,
+                tipo);
+
+            decimal fondoEv = CalcularFondoGarantia(
+                baseCalculo,
+                interesesEv,
+                tipo);
+
+            decimal puedeSolicitarEv = Math.Round(
+                baseCalculo + interesesEv + seguroEv + fondoEv,
+                2);
+
+            return (
+                puedeSolicitarEv,
+                importeLiquidoEv
+            );
+        }
+
+        /* ============================================================
+         * SECCIÓN 4: IMPORTE LÍQUIDO
+         * ============================================================ */
+
+        /* ============================================================
+         * VB: ImporteLiquidoDePrestamo
+         * ------------------------------------------------------------
+         * Calcula el dinero real que recibe el socio.
+         *
+         * Considera:
+         *  - Capital solicitado
+         *  - Intereses
+         *  - Seguro pasivo
+         *  - Fondo de garantía
+         *  - Saldo anterior del préstamo
+         *
+         * Fórmula basada en amortización nivelada.
+         * ============================================================ */
 
         private decimal CalcularImporteLiquidoPrestamo(
             EstadoCuentaContextDto ctx,
@@ -475,9 +538,7 @@ namespace CMAP_SISTEMAS_MVC.Services
             if (capital <= 0 || numeroPagos <= 0)
                 return 0m;
 
-            decimal tasaPeriodo = ctx.Estatus == "A"
-                ? tipo.TasaIntNormal / 2400m
-                : tipo.TasaIntNormal / 1200m;
+            decimal tasaPeriodo = ObtenerTasaPeriodo(ctx, tipo);
 
             if (tasaPeriodo <= 0)
                 return Math.Max(0m, Math.Round(capital - saldoPrestamo, 2));
@@ -512,45 +573,28 @@ namespace CMAP_SISTEMAS_MVC.Services
             return Math.Round(importeLiquido, 2);
         }
 
-        private decimal TasaElevada(decimal tasaPeriodo, int numeroPagos)
+        /* ============================================================
+        * VB: ImporteLiquidoDePrestamo - Eventos Sociales EV
+        * ------------------------------------------------------------
+        * Para EV, el importe líquido se calcula diferente al flujo
+        * general.
+        *
+        * Fórmula actual replicada:
+        *
+        * importeLiquido = puedeSolicitarInicial - saldoActualDelTipo
+        *
+        * Donde:
+        * - puedeSolicitarInicial viene de DameMenorAlcance
+        * - saldoActualDelTipo es el saldo vigente del préstamo EV
+        *
+        * Si el resultado es negativo, se regresa 0.
+        * ============================================================ */
+
+        private decimal CalcularImporteLiquidoEventosSociales(
+            decimal puedeSolicitarInicial,
+            decimal saldoActualDelTipo)
         {
-            return (decimal)Math.Pow((double)(1m + tasaPeriodo), numeroPagos);
-        }
-
-        private bool AplicaFondoGarantia(TipoPrestamoDto tipo)
-        {
-            return tipo.PorcenFondoGarantia > 0;
-        }
-
-        private decimal CalcularImporteLiquidoEstimado(
-            decimal puedeSolicitar,
-            TipoPrestamoDto tipo,
-            int plazoMeses)
-        {
-            if (puedeSolicitar <= 0)
-                return 0m;
-
-            if (tipo.EsLiquido == "S")
-                return Math.Round(puedeSolicitar, 2);
-
-            decimal tasa = tipo.TasaIntNormal;
-            decimal seguro = tipo.PorcenSeguroPasivo;
-            decimal fondo = tipo.PorcenFondoGarantia;
-
-            decimal cargoInteres = 0m;
-            decimal cargoSeguro = 0m;
-            decimal cargoFondo = 0m;
-
-            if (tasa > 0)
-                cargoInteres = puedeSolicitar * (tasa / 100m);
-
-            if (seguro > 0)
-                cargoSeguro = puedeSolicitar * (seguro / 100m);
-
-            if (fondo > 0)
-                cargoFondo = puedeSolicitar * (fondo / 100m);
-
-            decimal importeLiquido = puedeSolicitar - cargoInteres - cargoSeguro - cargoFondo;
+            decimal importeLiquido = puedeSolicitarInicial - saldoActualDelTipo;
 
             if (importeLiquido < 0)
                 importeLiquido = 0m;
@@ -559,11 +603,104 @@ namespace CMAP_SISTEMAS_MVC.Services
         }
 
         /* ============================================================
-         * SECCIÓN D: TIPOS DE PRÉSTAMO
+         * SECCIÓN 5: INTERESES, SEGURO Y FONDO
          * ============================================================ */
+
+        /* ============================================================
+         * VB: Cálculo de intereses del préstamo
+         * ------------------------------------------------------------
+         * Usa fórmula de pago nivelado:
+         *
+         *  pago = P * r * (1 + r)^n / ((1 + r)^n - 1)
+         *
+         *  intereses = totalPagado - capital
+         *
+         * IMPORTANTE:
+         *  - VB redondea el pago nivelado a 2 decimales.
+         * ============================================================ */
+
+        private decimal CalcularInteresAPrestamo(
+            decimal importePrestamo,
+            decimal tasaPeriodo,
+            int numeroPagos)
+        {
+            if (importePrestamo <= 0 || tasaPeriodo <= 0 || numeroPagos <= 0)
+                return 0m;
+
+            importePrestamo = Math.Round(importePrestamo, 2);
+
+            decimal factor = TasaElevada(tasaPeriodo, numeroPagos);
+
+            decimal pagoNivelado =
+                importePrestamo *
+                tasaPeriodo *
+                factor /
+                (factor - 1m);
+
+            pagoNivelado = Math.Round(pagoNivelado, 2);
+
+            decimal totalPagado = pagoNivelado * numeroPagos;
+
+            decimal intereses = totalPagado - importePrestamo;
+
+            return Math.Round(intereses, 2);
+        }
+
+        private decimal ObtenerTasaPeriodo(
+            EstadoCuentaContextDto ctx,
+            TipoPrestamoDto tipo)
+        {
+            return ctx.Estatus == "A"
+                ? tipo.TasaIntNormal / 2400m
+                : tipo.TasaIntNormal / 1200m;
+        }
+
+        private decimal TasaElevada(
+            decimal tasaPeriodo,
+            int numeroPagos)
+        {
+            return (decimal)Math.Pow((double)(1m + tasaPeriodo), numeroPagos);
+        }
+
+        private decimal CalcularSeguroPasivo(
+            decimal baseCalculo,
+            decimal intereses,
+            TipoPrestamoDto tipo)
+        {
+            if (tipo.PorcenSeguroPasivo <= 0)
+                return 0m;
+
+            return Math.Round(
+                (baseCalculo + intereses) * (tipo.PorcenSeguroPasivo / 100m),
+                2);
+        }
+
+        private decimal CalcularFondoGarantia(
+            decimal baseCalculo,
+            decimal intereses,
+            TipoPrestamoDto tipo)
+        {
+            if (!AplicaFondoGarantia(tipo))
+                return 0m;
+
+            return Math.Round(
+                (baseCalculo + intereses) * (tipo.PorcenFondoGarantia / 100m),
+                2);
+        }
+
+        private bool AplicaFondoGarantia(
+            TipoPrestamoDto tipo)
+        {
+            return tipo.PorcenFondoGarantia > 0;
+        }
+
+        /* ============================================================
+         * SECCIÓN 6: TIPOS DE PRÉSTAMO
+         * ============================================================ */
+
         private async Task<List<TipoPrestamoDto>> ObtenerTiposPrestamoAsync(
-        EstadoCuentaContextDto ctx,
-        List<PrestamoVigenteDto> vigentes)
+            EstadoCuentaContextDto ctx,
+            List<PrestamoVigenteDto> vigentes)
         {
             var query =
                 from tp in _context.TABLA_DE_TIPOS_DE_PRESTAMOS.AsNoTracking()
@@ -613,8 +750,9 @@ namespace CMAP_SISTEMAS_MVC.Services
             var tipoPc = lista.FirstOrDefault(x => x.ClavePrestamo == "PC");
 
             lista = lista
-                .Where(x => x.ClavePrestamo != "ES" &&
-                            x.ClavePrestamo != "PC")
+                .Where(x =>
+                    x.ClavePrestamo != "ES" &&
+                    x.ClavePrestamo != "PC")
                 .ToList();
 
             if (tieneEsVigente && tipoEs != null)
@@ -634,27 +772,28 @@ namespace CMAP_SISTEMAS_MVC.Services
                 lista.Add(tipoPc);
             }
 
-            // Orden de visualización de NO PERSONALES
-            // PP se excluye aquí porque se procesa aparte en el flujo de personales
             var orden = new[] { "ES", "PC", "EV", "PR", "RE", "VI", "VA", "GM", "EX", "PH" };
-            
+
             return lista
                 .Where(x =>
                     orden.Contains(x.ClavePrestamo) &&
-                    x.ClavePrestamo != "PP") // PP se procesa aparte en el flujo de personales
+                    x.ClavePrestamo != "PP")
                 .OrderBy(x => Array.IndexOf(orden, x.ClavePrestamo))
                 .ThenBy(x => x.SubCve)
                 .ToList();
         }
 
         /* ============================================================
-         * SECCIÓN E: PRÉSTAMOS VIGENTES
+         * SECCIÓN 7: PRÉSTAMOS VIGENTES
          * ============================================================ */
+
         private async Task<List<PrestamoVigenteDto>> ObtenerPrestamosVigentesAsync(
             string clavePension,
             DateTime fechaSistema)
         {
-            var rows = await ObtenerPrestamosVigentesSqlAsync(clavePension, fechaSistema);
+            var rows = await ObtenerPrestamosVigentesSqlAsync(
+                clavePension,
+                fechaSistema);
 
             var resultado = new List<PrestamoVigenteDto>(rows.Count);
 
@@ -717,9 +856,35 @@ namespace CMAP_SISTEMAS_MVC.Services
         }
 
         /* ============================================================
-         * SECCIÓN F: PRESENTACIÓN
+         * SECCIÓN 8: PROYECCIONES TEMPORALES
+         * ============================================================
+         * Temporalmente desactivado.
+         *
+         * Motivo:
+         * Las proyecciones hardcodeadas generaban duplicados e importes
+         * incorrectos en Estado de Cuenta.
+         *
+         * Siguiente etapa:
+         * Generar estas filas desde:
+         *  - TABLA_DE_TIPOS_DE_PRESTAMOS
+         *  - DETALLE_DE_TIPOS_DE_PRESTAMOS
          * ============================================================ */
-        private string ObtenerNombreVisible(string clavePrestamo, int? subClave)
+
+        private void AgregarFilasProyectadas(
+            EstadoCuentaContextDto ctx,
+            List<EstadoCuentaRowsDto> resultado,
+            List<PrestamoVigenteDto> vigentes)
+        {
+            // Intencionalmente vacío por ahora.
+        }
+
+        /* ============================================================
+         * SECCIÓN 9: PRESENTACIÓN
+         * ============================================================ */
+
+        private string ObtenerNombreVisible(
+            string clavePrestamo,
+            int? subClave)
         {
             return (clavePrestamo, subClave) switch
             {
@@ -741,7 +906,9 @@ namespace CMAP_SISTEMAS_MVC.Services
             };
         }
 
-        private int ObtenerOrdenVisual(string clavePrestamo, int? subClave)
+        private int ObtenerOrdenVisual(
+            string clavePrestamo,
+            int? subClave)
         {
             return (clavePrestamo, subClave) switch
             {

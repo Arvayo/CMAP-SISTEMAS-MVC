@@ -4,5 +4,7 @@
     {
         public List<EstadoCuentaRowsDto> FilasProyeccion { get; set; } = new();
         public PrestamoPersonalResumenDTO? Resumen { get; set; }
+
+        public EstadoCuentaRowsDto? FilaPrestamoPPVigente { get; set; }
     }
 }

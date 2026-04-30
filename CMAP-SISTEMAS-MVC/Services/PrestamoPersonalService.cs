@@ -99,7 +99,7 @@ namespace CMAP_SISTEMAS_MVC.Services
                             filaVigente.EstaVigente = true;
                             filaVigente.EsProyeccion = false;
 
-                            resultado.FilasProyeccion.Add(filaVigente);
+                            resultado.FilaPrestamoPPVigente = filaVigente;
                         }
                     }
                 }

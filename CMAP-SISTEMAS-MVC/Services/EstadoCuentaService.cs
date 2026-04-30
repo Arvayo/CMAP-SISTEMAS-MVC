@@ -10,15 +10,18 @@ namespace CMAP_SISTEMAS_MVC.Services
     /// ============================================================
     /// SERVICIO: EstadoCuentaService
     /// ------------------------------------------------------------
-    /// Genera el Estado de Cuenta (resumen) para un socio.
+    /// Genera el Estado de Cuenta para un socio.
     ///
-    /// Migración VB → C# (referencia):
-    ///  - ActualizaTablaTemporalReporte()  -> préstamos NO personales
-    ///  - NuevaAgregaPersonales()          -> préstamo personal (PP)
+    /// Referencia VB:
+    ///  - ActualizaTablaTemporalReporte()  -> Préstamos NO personales
+    ///  - NuevaAgregaPersonales()          -> Préstamo personal PP
     ///
-    /// NOTA:
-    ///  - Este servicio trabaja con DTOs (no ViewModels).
-    ///  - La vista debe consumir lo que entregue el controller.
+    /// Responsabilidad:
+    ///  - Cargar datos base del socio
+    ///  - Generar préstamos no personales
+    ///  - Generar préstamo personal PP
+    ///  - Integrar PP vigente en tabla general
+    ///  - Separar proyección PP de préstamo PP vigente
     /// ============================================================
     /// </summary>
     public class EstadoCuentaService
@@ -26,6 +29,7 @@ namespace CMAP_SISTEMAS_MVC.Services
         /* ============================================================
          * CAMPOS PRIVADOS
          * ============================================================ */
+
         private readonly Cmap54SistemasContext _context;
         private readonly IPrestamoNoPersonalService _prestamoNoPersonalService;
         private readonly IPrestamoPersonalService _prestamoPersonalService;
@@ -33,9 +37,11 @@ namespace CMAP_SISTEMAS_MVC.Services
         /* ============================================================
          * CONSTRUCTOR
          * ============================================================ */
-        public EstadoCuentaService(Cmap54SistemasContext context,
-               IPrestamoNoPersonalService prestamoNoPersonalService,
-               IPrestamoPersonalService prestamoPersonalService)
+
+        public EstadoCuentaService(
+            Cmap54SistemasContext context,
+            IPrestamoNoPersonalService prestamoNoPersonalService,
+            IPrestamoPersonalService prestamoPersonalService)
         {
             _context = context;
             _prestamoNoPersonalService = prestamoNoPersonalService;
@@ -46,44 +52,98 @@ namespace CMAP_SISTEMAS_MVC.Services
          * API PÚBLICA
          * ============================================================ */
 
-        /// <summary>
-        /// Genera el estado de cuenta (resumen por tipo de préstamo).
-        /// </summary>
         public async Task<EstadoCuentaResultadoDTO> GenerarEstadoCuentaAsync(
-        EstadoCuentaContextDto contexto)
+            EstadoCuentaContextDto contexto)
         {
             ValidarContexto(contexto);
 
             await CargarDatosBaseSocioEnContextoAsync(contexto);
 
+            /* ========================================================
+             * SECCIÓN A: PRÉSTAMOS NO PERSONALES
+             * --------------------------------------------------------
+             * Equivalente VB:
+             *  - ActualizaTablaTemporalReporte()
+             *
+             * Esta lista alimenta la tabla general:
+             *  - ES
+             *  - PC
+             *  - EV
+             *  - PR
+             *  - RE
+             *  - VI / VA
+             *  - GM / EX / PH si aplican
+             *
+             * NOTA:
+             *  PP no se calcula aquí. PP se integra después desde el
+             *  servicio de préstamos personales.
+             * ======================================================== */
+
             var noPersonales = await _prestamoNoPersonalService
                 .GenerarPrestamosNoPersonalesAsync(contexto);
 
+            /* ========================================================
+             * SECCIÓN B: PRÉSTAMO PERSONAL PP
+             * --------------------------------------------------------
+             * Equivalente VB:
+             *  - NuevaAgregaPersonales()
+             *
+             * Separación importante:
+             *
+             *  resultadoPersonal.FilaPrestamoPPVigente
+             *      -> representa el PP activo real.
+             *      -> se usa para mostrar PERSONAL en la tabla general.
+             *
+             *  resultadoPersonal.FilasProyeccion
+             *      -> representa proyecciones de PP.
+             *      -> solo debe alimentar la tabla inferior de PP.
+             *
+             * Esto evita que un PP vigente NO renovable aparezca como
+             * proyección con importes en cero.
+             * ======================================================== */
+
             var personales = new List<EstadoCuentaRowsDto>();
             PrestamoPersonalResumenDTO? resumenPrestamoPersonal = null;
+            ResultadoPrestamoPersonalDto? resultadoPersonal = null;
 
-            /* ============================================================
-             * SECCIÓN C: PRÉSTAMOS PERSONALES
-             * ============================================================ */
             if (!contexto.SoloPrestamoGM)
             {
-                var resultadoPersonal = await _prestamoPersonalService
+                resultadoPersonal = await _prestamoPersonalService
                     .GenerarPrestamosPersonalesAsync(contexto);
 
                 personales = resultadoPersonal.FilasProyeccion;
                 resumenPrestamoPersonal = resultadoPersonal.Resumen;
             }
 
-            /* ============================================================
-             * SECCIÓN D: FILA RESUMEN PP EN TABLA GENERAL
-             * ============================================================
-             * El sistema VB muestra el préstamo PERSONAL dentro de la
-             * tabla general de "Información de Préstamos", y además muestra
-             * el detalle/proyección de PP en una tabla inferior.
-             * ============================================================ */
-            var filaResumenPP = personales
-                .OrderBy(x => x.SubClave)
-                .FirstOrDefault();
+            /* ========================================================
+             * SECCIÓN C: FILA RESUMEN PP EN TABLA GENERAL
+             * --------------------------------------------------------
+             * El sistema VB muestra PERSONAL dentro de la tabla general
+             * de "Información de Préstamos".
+             *
+             * Regla aplicada:
+             *
+             *  1. Si existe PP vigente:
+             *      usar FilaPrestamoPPVigente.
+             *
+             *  2. Si no existe PP vigente, pero hay proyección:
+             *      usar la primera fila de FilasProyeccion.
+             *
+             * Resultado:
+             *  - PP vigente NO renovable:
+             *      aparece en tabla general.
+             *      NO aparece en tabla inferior de proyección.
+             *
+             *  - PP renovable:
+             *      aparece en tabla general.
+             *      puede aparecer en tabla inferior.
+             * ======================================================== */
+
+            var filaResumenPP =
+                resultadoPersonal?.FilaPrestamoPPVigente
+                ?? personales
+                    .OrderBy(x => x.SubClave)
+                    .FirstOrDefault();
 
             if (filaResumenPP != null)
             {
@@ -111,41 +171,30 @@ namespace CMAP_SISTEMAS_MVC.Services
                     EsProyeccion = filaResumenPP.EsProyeccion,
                     OrdenVisual = 3
                 });
-
-                noPersonales = noPersonales
-                    .OrderBy(x => x.OrdenVisual)
-                    .ThenBy(x => x.SubClave)
-                    .ToList();
             }
 
-            if (resumenPrestamoPersonal == null)
-            {
-                resumenPrestamoPersonal = new PrestamoPersonalResumenDTO
-                {
-                    TienePrestamoVigente = false,
-                    PuedeRenovar = false,
-                    CumplePago = false,
-                    CumplePlazo = false,
-                    DiasFaltantes = 0,
-                    MontoFaltanteParaRenovar = 0,
-                    SaldoPrestamoActivo = 0,
-                    LiquidaConPrestamoActivo = 0,
-                    MensajeResultado = "No se pudo determinar el estado del préstamo personal."
-                };
-            }
+            noPersonales = noPersonales
+                .OrderBy(x => x.OrdenVisual)
+                .ThenBy(x => x.SubClave)
+                .ToList();
 
-            var resultado = new EstadoCuentaResultadoDTO
+            resumenPrestamoPersonal ??= CrearResumenPrestamoPersonalDefault();
+
+            return new EstadoCuentaResultadoDTO
             {
                 Encabezado = await ConstruirEncabezadoAsync(contexto),
                 PrestamosNoPersonales = noPersonales,
                 PrestamosPersonales = personales,
                 ResumenPrestamoPersonal = resumenPrestamoPersonal
             };
-
-            return resultado;
         }
 
-        private async Task<EstadoCuentaEncabezadoDTO> ConstruirEncabezadoAsync(EstadoCuentaContextDto ctx)
+        /* ============================================================
+         * SECCIÓN D: ENCABEZADO DEL ESTADO DE CUENTA
+         * ============================================================ */
+
+        private async Task<EstadoCuentaEncabezadoDTO> ConstruirEncabezadoAsync(
+            EstadoCuentaContextDto ctx)
         {
             var socio = await _context.TABLA_DE_SOCIOS
                 .AsNoTracking()
@@ -164,8 +213,8 @@ namespace CMAP_SISTEMAS_MVC.Services
             string nombreSocio = string.Join(" ",
                 new[]
                 {
-            socio.ApellidosSocio?.Trim(),
-            socio.NombreSocio?.Trim()
+                    socio.ApellidosSocio?.Trim(),
+                    socio.NombreSocio?.Trim()
                 }
                 .Where(x => !string.IsNullOrWhiteSpace(x)));
 
@@ -194,29 +243,11 @@ namespace CMAP_SISTEMAS_MVC.Services
         }
 
         /* ============================================================
-         * VALIDACIONES
+         * SECCIÓN E: CARGA DE DATOS BASE DEL SOCIO
          * ============================================================ */
 
-        /// <summary>
-        /// Valida los datos mínimos requeridos para generar el estado de cuenta.
-        /// </summary>
-        private static void ValidarContexto(EstadoCuentaContextDto contexto)
-        {
-            if (contexto == null)
-                throw new ArgumentNullException(nameof(contexto));
-
-            if (string.IsNullOrWhiteSpace(contexto.ClavePension))
-                throw new ArgumentException("La ClavePension es obligatoria.", nameof(contexto.ClavePension));
-        }
-
-        /* ============================================================
-         * SECCIÓN A: SOCIO BASE (TABLA_DE_SOCIOS)
-         * ============================================================ */
-
-        /// <summary>
-        /// Lee TABLA_DE_SOCIOS y llena campos del contexto necesarios para cálculos.
-        /// </summary>
-        private async Task CargarDatosBaseSocioEnContextoAsync(EstadoCuentaContextDto ctx)
+        private async Task CargarDatosBaseSocioEnContextoAsync(
+            EstadoCuentaContextDto ctx)
         {
             var socio = await ObtenerSocioBaseAsync(ctx.ClavePension);
 
@@ -231,68 +262,52 @@ namespace CMAP_SISTEMAS_MVC.Services
             if (!string.IsNullOrWhiteSpace(socio.Vigencia))
                 ctx.Vigencia = socio.Vigencia;
 
-            // ============================================================
-            // CAMPOS NECESARIOS PARA REGLAS DE NEGOCIO
-            // ============================================================
-
             if (!string.IsNullOrWhiteSpace(socio.Estatus))
                 ctx.Estatus = socio.Estatus;
 
-            ctx.MesesCot = CalcularMesesCotizados(socio.FechaIngreso, ctx.FechaSistema);
+            ctx.MesesCot = CalcularMesesCotizados(
+                socio.FechaIngreso,
+                ctx.FechaSistema);
 
             ctx.Salario = socio.Salario;
             ctx.ElLimite = socio.LimiteDescuento;
 
-            // ============================================================
-            // NUEVO: saldo acumulado de préstamos topados por ahorro
-            // Se usa para aplicar el límite global de 3.5 veces ahorro.
-            // ============================================================
-            ctx.SaldoPrestamosTopadosAhorro = await ObtenerSaldoPrestamosTopadosAhorroAsync(ctx.ClavePension);
+            /*
+             * Regla general de préstamos:
+             * --------------------------------------------------------
+             * Saldo acumulado de préstamos topados por ahorro.
+             *
+             * Se utiliza para aplicar el límite global:
+             *  - ningún préstamo debe exceder 3.5 veces los ahorros
+             *    considerando saldos vigentes relacionados.
+             */
 
-            // ============================================================
-            // NUEVO: bandera para excepción del tope global
-            // Por default la dejamos en false.
-            // Después puedes setearla desde el flujo que origine
-            // una solicitud especial.
-            // ============================================================
+            ctx.SaldoPrestamosTopadosAhorro =
+                await ObtenerSaldoPrestamosTopadosAhorroAsync(ctx.ClavePension);
+
+            /*
+             * Por default se considera que NO es solicitud especial.
+             * Si más adelante existe un flujo específico de solicitud
+             * especial, esta bandera puede establecerse antes del cálculo.
+             */
+
             ctx.EsSolicitudEspecial = false;
-
-            // TODO(VB): aquí se derivan más banderas/estatus si aplica:
-            // - descuentos generados
-            // - fechas base/proyección de descuentos
-            // - reglas heredadas por tipo de socio
         }
 
-        private async Task<decimal> ObtenerSaldoPrestamosTopadosAhorroAsync(string clavePension)
-        {
-            var clavesControladas = new[] { "PP", "PR", "RE", "ES", "PC" };
-
-            var saldo = await _context.TABLA_DE_PRESTAMOS
-                .AsNoTracking()
-                .Where(p => p.ClavePension == clavePension
-                         && clavesControladas.Contains(p.TipoPrestamo)
-                         && p.EstatusPrestamo == "VI")
-                .SumAsync(p => (decimal?)p.SaldoPrestamo);
-
-            return saldo ?? 0m;
-        }
-
-        /// <summary>
-        /// Obtiene los datos base del socio desde TABLA_DE_SOCIOS.
-        /// </summary>
-        private async Task<SocioBaseDto?> ObtenerSocioBaseAsync(string clavePension)
+        private async Task<SocioBaseDto?> ObtenerSocioBaseAsync(
+            string clavePension)
         {
             var socio = await _context.TABLA_DE_SOCIOS
-         .AsNoTracking()
-         .Where(s => s.ClavePension == clavePension)
-         .FirstOrDefaultAsync();
+                .AsNoTracking()
+                .Where(s => s.ClavePension == clavePension)
+                .FirstOrDefaultAsync();
 
             if (socio == null)
                 return null;
 
             DateTime? fechaIngreso = null;
 
-            var estatus = socio.ClavePension?.Trim().Substring(0, 1);
+            string estatus = socio.ClavePension?.Trim().Substring(0, 1) ?? string.Empty;
 
             if (estatus == "1")
             {
@@ -310,23 +325,76 @@ namespace CMAP_SISTEMAS_MVC.Services
             return new SocioBaseDto
             {
                 ClavePension = socio.ClavePension ?? string.Empty,
-                SaldoAhorros = socio.SaldoAhorros ?? 0,
-                SueldoNetoTotal = socio.SueldoNetoTotal ?? 0,
-                SaldoPrestamos = socio.SaldoPrestamos ?? 0,
+                SaldoAhorros = socio.SaldoAhorros ?? 0m,
+                SueldoNetoTotal = socio.SueldoNetoTotal ?? 0m,
+                SaldoPrestamos = socio.SaldoPrestamos ?? 0m,
                 Vigencia = socio.VIGENCIA,
                 Situacion = socio.SITUACION,
                 FechaIngreso = fechaIngreso,
 
                 Estatus = socio.EstatusActualSocio ?? string.Empty,
-                Salario = 0,
-                LimiteDescuento = 0
+                Salario = 0m,
+                LimiteDescuento = 0m
             };
         }
 
+        private async Task<decimal> ObtenerSaldoPrestamosTopadosAhorroAsync(
+            string clavePension)
+        {
+            var clavesControladas = new[] { "PP", "PR", "RE", "ES", "PC" };
+
+            var saldo = await _context.TABLA_DE_PRESTAMOS
+                .AsNoTracking()
+                .Where(p =>
+                    p.ClavePension == clavePension &&
+                    clavesControladas.Contains(p.TipoPrestamo) &&
+                    p.EstatusPrestamo == "VI")
+                .SumAsync(p => (decimal?)p.SaldoPrestamo);
+
+            return saldo ?? 0m;
+        }
+
         /* ============================================================
-         * MÉTODOS AUXILIARES
-        * ============================================================ */
-        private static int CalcularMesesCotizados(DateTime? fechaIngreso, DateTime fechaSistema)
+         * SECCIÓN F: VALIDACIONES
+         * ============================================================ */
+
+        private static void ValidarContexto(
+            EstadoCuentaContextDto contexto)
+        {
+            if (contexto == null)
+                throw new ArgumentNullException(nameof(contexto));
+
+            if (string.IsNullOrWhiteSpace(contexto.ClavePension))
+            {
+                throw new ArgumentException(
+                    "La ClavePension es obligatoria.",
+                    nameof(contexto.ClavePension));
+            }
+        }
+
+        /* ============================================================
+         * SECCIÓN G: AUXILIARES
+         * ============================================================ */
+
+        private static PrestamoPersonalResumenDTO CrearResumenPrestamoPersonalDefault()
+        {
+            return new PrestamoPersonalResumenDTO
+            {
+                TienePrestamoVigente = false,
+                PuedeRenovar = false,
+                CumplePago = false,
+                CumplePlazo = false,
+                DiasFaltantes = 0,
+                MontoFaltanteParaRenovar = 0,
+                SaldoPrestamoActivo = 0,
+                LiquidaConPrestamoActivo = 0,
+                MensajeResultado = "No se pudo determinar el estado del préstamo personal."
+            };
+        }
+
+        private static int CalcularMesesCotizados(
+            DateTime? fechaIngreso,
+            DateTime fechaSistema)
         {
             if (!fechaIngreso.HasValue)
                 return 0;
@@ -344,7 +412,6 @@ namespace CMAP_SISTEMAS_MVC.Services
 
             return meses < 0 ? 0 : meses;
         }
-
     }
 }
 
