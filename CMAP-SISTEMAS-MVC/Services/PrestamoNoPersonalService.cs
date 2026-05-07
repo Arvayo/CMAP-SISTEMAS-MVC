@@ -81,7 +81,9 @@ namespace CMAP_SISTEMAS_MVC.Services
 
             return resultado
                 .OrderBy(x => x.OrdenVisual)
+                .ThenBy(x => x.ClavePrestamo == "PR" ? x.PlazoMeses : 0)
                 .ThenBy(x => x.SubClave)
+                .ThenBy(x => x.NombrePrestamo)
                 .ToList();
         }
 
@@ -175,7 +177,7 @@ namespace CMAP_SISTEMAS_MVC.Services
 
                 ClavePrestamo = tipo.ClavePrestamo,
                 SubClave = subClave,
-                NombrePrestamo = ObtenerNombreVisible(tipo.ClavePrestamo, subClave),
+                NombrePrestamo = tipo.NombrePrestamo,
 
                 FechaPrestamo = fechaPrestamo,
                 ImportePrestamo = importeTotal,
@@ -481,7 +483,6 @@ namespace CMAP_SISTEMAS_MVC.Services
                 saldoActualDelTipo);
 
             decimal tasaPeriodo = ObtenerTasaPeriodo(ctx, tipo);
-
             decimal baseCalculo = alcancePorSueldo;
 
             decimal interesesEv = CalcularInteresAPrestamo(
@@ -489,18 +490,25 @@ namespace CMAP_SISTEMAS_MVC.Services
                 tasaPeriodo,
                 numeroPagos);
 
+            decimal interesesDiasAdic = CalcularInteresDiasAdicionalesEV(
+                ctx,
+                tipo,
+                baseCalculo);
+
+            decimal interesesTotalesEv = interesesEv + interesesDiasAdic;
+
             decimal seguroEv = CalcularSeguroPasivo(
                 baseCalculo,
-                interesesEv,
+                interesesTotalesEv,
                 tipo);
 
             decimal fondoEv = CalcularFondoGarantia(
                 baseCalculo,
-                interesesEv,
+                interesesTotalesEv,
                 tipo);
 
             decimal puedeSolicitarEv = Math.Round(
-                baseCalculo + interesesEv + seguroEv + fondoEv,
+                baseCalculo + interesesTotalesEv + seguroEv + fondoEv,
                 2);
 
             return (
@@ -695,6 +703,33 @@ namespace CMAP_SISTEMAS_MVC.Services
         }
 
         /* ============================================================
+        * VB: DiasAdic - Eventos Sociales EV
+        * ------------------------------------------------------------
+        * Calcula interés adicional proporcional por días extra.
+        *
+        * Nota:
+        * Si DiasAdic no viene informado, se asume 0 para no alterar
+        * el resultado actual.
+        * ============================================================ */
+
+        private decimal CalcularInteresDiasAdicionalesEV(
+            EstadoCuentaContextDto ctx,
+            TipoPrestamoDto tipo,
+            decimal baseCalculo)
+        {
+            int diasAdic = ctx.DiasAdic;
+
+            if (diasAdic <= 0 || baseCalculo <= 0 || tipo.TasaIntNormal <= 0)
+                return 0m;
+
+            decimal tasaAnual = tipo.TasaIntNormal / 100m;
+
+            decimal interes = baseCalculo * tasaAnual / 360m * diasAdic;
+
+            return Math.Round(interes, 2);
+        }
+
+        /* ============================================================
          * SECCIÓN 6: TIPOS DE PRÉSTAMO
          * ============================================================ */
 
@@ -712,7 +747,9 @@ namespace CMAP_SISTEMAS_MVC.Services
                 select new TipoPrestamoDto
                 {
                     ClavePrestamo = tp.ClavePrestamo ?? string.Empty,
-                    NombrePrestamo = tp.NombrePrestamo ?? string.Empty,
+                    NombrePrestamo = !string.IsNullOrWhiteSpace(dp.NombrePrestamo)
+                        ? dp.NombrePrestamo.Trim()
+                        :(tp.NombrePrestamo ?? string.Empty).Trim(),
 
                     VecesAhorro = tp.VecesAhorro ?? 0,
                     PorcenRenova = tp.PorcenRenova ?? 0,
@@ -779,7 +816,9 @@ namespace CMAP_SISTEMAS_MVC.Services
                     orden.Contains(x.ClavePrestamo) &&
                     x.ClavePrestamo != "PP")
                 .OrderBy(x => Array.IndexOf(orden, x.ClavePrestamo))
+                .ThenBy(x => x.ClavePrestamo == "PR" ? x.PlazoMaximo : 0)
                 .ThenBy(x => x.SubCve)
+                .ThenBy(x => x.NombrePrestamo)
                 .ToList();
         }
 
@@ -906,29 +945,31 @@ namespace CMAP_SISTEMAS_MVC.Services
             };
         }
 
-        private int ObtenerOrdenVisual(
-            string clavePrestamo,
-            int? subClave)
+        private int ObtenerOrdenVisual(string clavePrestamo, int subClave)
         {
-            return (clavePrestamo, subClave) switch
+            return clavePrestamo switch
             {
-                ("ES", _) => 1,
-                ("PC", _) => 1,
+                "ES" => 10,
+                "PC" => 10,
 
-                ("EV", _) => 2,
+                "EV" => 20,
 
-                ("PP", _) => 3,
+                // PERSONAL
+                "PP" => 30,
 
-                ("PR", null) => 4,
-                ("PR", 0) => 4,
-                ("PR", 1) => 5,
-                ("PR", 2) => 6,
+                // PRENDARIOS
+                "PR" => 40,
 
-                ("RE", _) => 7,
-                ("VA", _) => 8,
-                ("VI", _) => 8,
+                // REFACCIONARIO
+                "RE" => 50,
 
-                _ => 99
+                "VI" => 60,
+                "VA" => 70,
+                "GM" => 80,
+                "EX" => 90,
+                "PH" => 100,
+
+                _ => 999
             };
         }
     }

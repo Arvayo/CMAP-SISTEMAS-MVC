@@ -98,6 +98,7 @@ namespace CMAP_SISTEMAS_MVC.Services
                             filaVigente.ClavePrestamo = "PP";
                             filaVigente.EstaVigente = true;
                             filaVigente.EsProyeccion = false;
+                            filaVigente.OrdenVisual = 30;
 
                             resultado.FilaPrestamoPPVigente = filaVigente;
                         }

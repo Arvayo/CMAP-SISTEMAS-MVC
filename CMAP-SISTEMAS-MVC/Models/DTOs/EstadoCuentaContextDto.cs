@@ -165,6 +165,8 @@
         /// Ejemplo: PP, PR, RE, ES y PC.
         /// </summary>
         public decimal SaldoPrestamosTopadosAhorro { get; set; }
+
+        public int DiasAdic { get; set; } = 0;
     }
 }
 

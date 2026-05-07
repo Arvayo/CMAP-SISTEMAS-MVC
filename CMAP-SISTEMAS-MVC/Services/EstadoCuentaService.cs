@@ -169,13 +169,15 @@ namespace CMAP_SISTEMAS_MVC.Services
 
                     EstaVigente = filaResumenPP.EstaVigente,
                     EsProyeccion = filaResumenPP.EsProyeccion,
-                    OrdenVisual = 3
+                    OrdenVisual = 30
                 });
             }
 
             noPersonales = noPersonales
                 .OrderBy(x => x.OrdenVisual)
+                .ThenBy(x => x.ClavePrestamo == "PR" ? x.PlazoMeses : 0)
                 .ThenBy(x => x.SubClave)
+                .ThenBy(x => x.NombrePrestamo)
                 .ToList();
 
             resumenPrestamoPersonal ??= CrearResumenPrestamoPersonalDefault();
