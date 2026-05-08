@@ -266,6 +266,15 @@ namespace CMAP_SISTEMAS_MVC.Services
                     puedeSolicitar);
             }
 
+            if (tipo.ClavePrestamo == "PR")
+            {
+                return CalcularAlcancePrendario(
+                    ctx,
+                    tipo,
+                    numeroPagos,
+                    saldoActualDelTipo);
+            }
+
             return CalcularAlcanceGeneralNoPersonal(
                 ctx,
                 tipo,
@@ -517,6 +526,30 @@ namespace CMAP_SISTEMAS_MVC.Services
             );
         }
 
+        private (decimal puedeSolicitar, decimal importeLiquido) CalcularAlcancePrendario(
+        EstadoCuentaContextDto ctx,
+        TipoPrestamoDto tipo,
+        int numeroPagos,
+        decimal saldoActualDelTipo)
+        {
+            decimal importeLiquidoObjetivo = tipo.MontoMaximo;
+
+            if (importeLiquidoObjetivo <= 0)
+                return (0m, 0m);
+
+            decimal puedeSolicitar = CalcularPuedeSolicitarDesdeLiquidoPrendario(
+                ctx,
+                tipo,
+                importeLiquidoObjetivo,
+                numeroPagos,
+                saldoActualDelTipo);
+
+            return (
+                Math.Round(puedeSolicitar, 2),
+                Math.Round(importeLiquidoObjetivo, 2)
+            );
+        }
+
         /* ============================================================
          * SECCIÓN 4: IMPORTE LÍQUIDO
          * ============================================================ */
@@ -608,6 +641,41 @@ namespace CMAP_SISTEMAS_MVC.Services
                 importeLiquido = 0m;
 
             return Math.Round(importeLiquido, 2);
+        }
+
+        private decimal CalcularPuedeSolicitarDesdeLiquidoPrendario(
+        EstadoCuentaContextDto ctx,
+        TipoPrestamoDto tipo,
+            decimal liquidoObjetivo,
+            int numeroPagos,
+            decimal saldoActualDelTipo)
+        {
+            decimal bajo = liquidoObjetivo;
+            decimal alto = liquidoObjetivo * 2m;
+
+            while (CalcularImporteLiquidoPrestamo(ctx, tipo, alto, numeroPagos, saldoActualDelTipo) < liquidoObjetivo)
+            {
+                alto *= 2m;
+            }
+
+            for (int i = 0; i < 40; i++)
+            {
+                decimal medio = (bajo + alto) / 2m;
+
+                decimal liquidoCalculado = CalcularImporteLiquidoPrestamo(
+                    ctx,
+                    tipo,
+                    medio,
+                    numeroPagos,
+                    saldoActualDelTipo);
+
+                if (liquidoCalculado < liquidoObjetivo)
+                    bajo = medio;
+                else
+                    alto = medio;
+            }
+
+            return Math.Round(alto, 2);
         }
 
         /* ============================================================
