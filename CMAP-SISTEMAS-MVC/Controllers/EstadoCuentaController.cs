@@ -45,7 +45,7 @@ namespace CMAP_SISTEMAS_MVC.Controllers
                     ClavePension = vm.Pension,
                     Estatus = "A", // temporal, luego lo calculamos correctamente
                     Vigencia = "", // se llenará desde TABLA_DE_SOCIOS
-                    FechaSistema = DateTime.Today,
+                    FechaSistema = new DateTime(2026, 2, 27),
                     MisAhorros = 0,
                     Salario = 0,
                     TotSueldo = 0,

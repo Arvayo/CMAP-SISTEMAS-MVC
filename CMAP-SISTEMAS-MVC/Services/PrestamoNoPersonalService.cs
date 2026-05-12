@@ -499,10 +499,10 @@ namespace CMAP_SISTEMAS_MVC.Services
                 tasaPeriodo,
                 numeroPagos);
 
-            decimal interesesDiasAdic = CalcularInteresDiasAdicionalesEV(
-                ctx,
+            decimal interesesDiasAdic = CalcularInteresDiasAdicionales(
                 tipo,
-                baseCalculo);
+                baseCalculo,
+                ctx.DiasAdic);
 
             decimal interesesTotalesEv = interesesEv + interesesDiasAdic;
 
@@ -646,54 +646,70 @@ namespace CMAP_SISTEMAS_MVC.Services
         private decimal CalcularPuedeSolicitarDesdeLiquidoPrendario(
         EstadoCuentaContextDto ctx,
         TipoPrestamoDto tipo,
-            decimal liquidoObjetivo,
-            int numeroPagos,
-            decimal saldoActualDelTipo)
+        decimal liquidoObjetivo,
+        int numeroPagos,
+        decimal saldoActualDelTipo)
         {
-            decimal bajo = liquidoObjetivo;
-            decimal alto = liquidoObjetivo * 2m;
+            decimal importeLiquido = liquidoObjetivo;
 
-            while (CalcularImporteLiquidoPrestamo(ctx, tipo, alto, numeroPagos, saldoActualDelTipo) < liquidoObjetivo)
-            {
-                alto *= 2m;
-            }
+            decimal tasaPeriodo = (tipo.TasaIntNormal / 100m) / 24m;
 
-            for (int i = 0; i < 40; i++)
-            {
-                decimal medio = (bajo + alto) / 2m;
+            decimal intereses = CalcularInteresAPrestamo(
+                importeLiquido,
+                tasaPeriodo,
+                numeroPagos);
 
-                decimal liquidoCalculado = CalcularImporteLiquidoPrestamo(
-                    ctx,
-                    tipo,
-                    medio,
-                    numeroPagos,
-                    saldoActualDelTipo);
+            // TEMPORAL:
+            // Esta fecha se usó solo para validar contra producción/base 27/02/2026.
+            // Debe reemplazarse por la fecha real de primer pago:
+            // fechaActivo, FecProxActivos, FechaJub, FecProxJub, FechaSnte o FecProxSnte.
 
-                if (liquidoCalculado < liquidoObjetivo)
-                    bajo = medio;
-                else
-                    alto = medio;
-            }
+            DateTime primerPago = new DateTime(2026, 3, 18); // temporal para validar
 
-            return Math.Round(alto, 2);
+            int diasAdicPr = CalcularDiasAdicionales(
+                ctx,
+                tipo.ClavePrestamo,
+                primerPago);
+
+            intereses += CalcularInteresDiasAdicionales(
+                tipo,
+                importeLiquido,
+                diasAdicPr);
+
+
+            decimal baseSeguroFondo = importeLiquido + intereses;
+
+            decimal seguro =
+                baseSeguroFondo * (tipo.PorcenSeguroPasivo / 100m);
+
+            decimal fondo =
+                baseSeguroFondo * (tipo.PorcenFondoGarantia / 100m);
+
+            decimal puedeSolicitar =
+                importeLiquido
+                + intereses
+                + seguro
+                + fondo;
+
+            return Math.Round(puedeSolicitar, 2);
         }
 
         /* ============================================================
          * SECCIÓN 5: INTERESES, SEGURO Y FONDO
          * ============================================================ */
 
-        /* ============================================================
-         * VB: Cálculo de intereses del préstamo
-         * ------------------------------------------------------------
-         * Usa fórmula de pago nivelado:
-         *
-         *  pago = P * r * (1 + r)^n / ((1 + r)^n - 1)
-         *
-         *  intereses = totalPagado - capital
-         *
-         * IMPORTANTE:
-         *  - VB redondea el pago nivelado a 2 decimales.
-         * ============================================================ */
+            /* ============================================================
+             * VB: Cálculo de intereses del préstamo
+             * ------------------------------------------------------------
+             * Usa fórmula de pago nivelado:
+             *
+             *  pago = P * r * (1 + r)^n / ((1 + r)^n - 1)
+             *
+             *  intereses = totalPagado - capital
+             *
+             * IMPORTANTE:
+             *  - VB redondea el pago nivelado a 2 decimales.
+             * ============================================================ */
 
         private decimal CalcularInteresAPrestamo(
             decimal importePrestamo,
@@ -771,30 +787,52 @@ namespace CMAP_SISTEMAS_MVC.Services
         }
 
         /* ============================================================
-        * VB: DiasAdic - Eventos Sociales EV
+        * VB: DiasAdic - Días adicionales de préstamos
         * ------------------------------------------------------------
-        * Calcula interés adicional proporcional por días extra.
+        * Calcula los días adicionales entre FechaSistema y PrimerPago,
+        * replicando la lógica legacy VB:
         *
-        * Nota:
-        * Si DiasAdic no viene informado, se asume 0 para no alterar
-        * el resultado actual.
+        * - Jubilados: base de 30 días
+        * - Activos / Empleados: base de 15 días
+        * - EX: no aplica
+        *
+        * Luego CalcularInteresDiasAdicionales convierte esos días
+        * en interés diario proporcional.
         * ============================================================ */
 
-        private decimal CalcularInteresDiasAdicionalesEV(
+        private int CalcularDiasAdicionales(
             EstadoCuentaContextDto ctx,
-            TipoPrestamoDto tipo,
-            decimal baseCalculo)
+            string clavePrestamo,
+            DateTime primerPago)
         {
-            int diasAdic = ctx.DiasAdic;
+            if ((clavePrestamo ?? "").Trim() == "EX")
+                return 0;
 
+            DateTime fechaSistema = ctx.FechaSistema.Date;
+
+            int diasBase = ctx.Estatus == "J"
+                ? 30
+                : 15;
+
+            if ((primerPago.Date - fechaSistema.AddDays(1)).Days > diasBase)
+            {
+                return (primerPago.Date.AddDays(-diasBase) - fechaSistema).Days;
+            }
+
+            return 0;
+        }
+
+        private decimal CalcularInteresDiasAdicionales(
+            TipoPrestamoDto tipo,
+            decimal baseCalculo,
+            int diasAdic)
+        {
             if (diasAdic <= 0 || baseCalculo <= 0 || tipo.TasaIntNormal <= 0)
                 return 0m;
 
             decimal tasaAnual = tipo.TasaIntNormal / 100m;
 
-            decimal interes = baseCalculo * tasaAnual / 360m * diasAdic;
-
-            return Math.Round(interes, 2);
+            return Math.Round(baseCalculo * tasaAnual / 360m * diasAdic, 2);
         }
 
         /* ============================================================

@@ -59,6 +59,7 @@ namespace CMAP_SISTEMAS_MVC.Services
 
             await CargarDatosBaseSocioEnContextoAsync(contexto);
 
+           
             /* ========================================================
              * SECCIÓN A: PRÉSTAMOS NO PERSONALES
              * --------------------------------------------------------
