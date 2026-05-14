@@ -32,6 +32,15 @@ namespace CMAP_SISTEMAS_MVC.Models.DTOs
         public string? TipoPrestamo { get; set; } = string.Empty;
 
         /// <summary>
+        /// Estatus actual del préstamo.
+        /// VI = Vigente.
+        /// LI = Liquidado.
+        /// Cuando LI tiene ImporteAmortizacion > 0,
+        /// representa una devolución pendiente por cobro de más.
+        /// </summary>
+        public string? EstatusPrestamo { get; set; } = string.Empty;
+
+        /// <summary>
         /// Subclave utilizada en algunos préstamos
         /// (ej. prendarios o varios).
         /// </summary>
