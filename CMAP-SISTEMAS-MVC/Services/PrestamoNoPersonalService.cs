@@ -127,7 +127,7 @@ namespace CMAP_SISTEMAS_MVC.Services
                     .Where(p => p.TipoPrestamo == "PP")
                     .ToList();
             }
-            else if (EsPrestamoViajes(tipo))
+            else if (tipo.ClavePrestamo == "PV")
             {
                 prestamosDelTipo = vigentes
                     .Where(p =>
@@ -197,22 +197,33 @@ namespace CMAP_SISTEMAS_MVC.Services
                                prestamoPrincipal.SaldoPrestamo > 0;
 
             /* ========================================================================
-             * 6. DECIDIR SI SE CALCULA PROYECCIÓN
-             * ------------------------------------------------------------------------
-             * Esta decisión se delega al helper DebeCalcularProyeccion.
-             *
-             * Ejemplos:
-             * - EV / PR normalmente proyectan si el catálogo está vigente.
-             * - VI para activos/SNTE no proyecta fuera de temporada.
-             * - VI para jubilados sí puede proyectar.
-             * - GM / EX / PH / PC / PS no proyectan normalmente.
-             * ======================================================================== */
-            bool realizarProyeccion = DebeCalcularProyeccion(
-                ctx,
-                tipo,
-                prestamoPrincipal);
+            * 6. DECIDIR SI SE EJECUTA LA SECCIÓN DE ALCANCE / PROYECCIÓN
+            * ------------------------------------------------------------------------
+            * Esta decisión replica la bandera VB:
+            *
+            * realizarRutinasSeccionAlcance = True / False
+            *
+            * Importante:
+            * - Esto NO decide si se muestra saldo real.
+            * - SaldoPrestamo > 0 o SaldoPrestamo < 0 se muestra aparte.
+            * - Esto solo decide si se calcula PuedeSolicitar, ImporteLiquido y Descuento.
+            *
+            * Ejemplos:
+            * - ES proyecta como préstamo común ligado a ES/PC.
+            * - PC no proyecta individualmente.
+            * - PV proyecta según estatus/temporada.
+            * - PE proyecta solo para activos si está vigente.
+            * - EV / PR / RE / VI proyectan si el catálogo está vigente.
+            * - GM / AU / VA / PS / PH no proyectan normalmente.
+            * - EX proyecta solo si está vigente.
+            * ======================================================================== */
+            bool realizarRutinasSeccionAlcance =
+                DebeRealizarRutinasSeccionAlcance(
+                    ctx,
+                    tipo,
+                    prestamoPrincipal);
 
-            bool esProyeccion = realizarProyeccion;
+            bool esProyeccion = realizarRutinasSeccionAlcance;
 
             /* ========================================================================
              * 7. CALCULAR DESCUENTO SI HAY PRÉSTAMO VIGENTE
@@ -234,22 +245,15 @@ namespace CMAP_SISTEMAS_MVC.Services
             }
 
             /* ========================================================================
-             * 8. CALCULAR ALCANCE / PROYECCIÓN
-             * ------------------------------------------------------------------------
-             * Solo se ejecuta si realizarProyeccion = true.
-             *
-             * Aquí entran las reglas especiales de EV / PR:
-             * - EsLiquido = "S"
-             * - Importe líquido base
-             * - Intereses normales
-             * - DiasAdic
-             * - Seguro pasivo
-             * - Fondo de garantía
-             * ======================================================================== */
+            * 8. CALCULAR ALCANCE / PROYECCIÓN
+            * ------------------------------------------------------------------------
+            * Solo se ejecuta si realizarRutinasSeccionAlcance = true.
+            * ======================================================================== */
+
             decimal puedeSolicitar = 0m;
             decimal importeLiquido = 0m;
 
-            if (realizarProyeccion)
+            if (realizarRutinasSeccionAlcance)
             {
                 (puedeSolicitar, importeLiquido) = CalcularAlcanceNoPersonal(
                     ctx,
@@ -259,15 +263,16 @@ namespace CMAP_SISTEMAS_MVC.Services
             }
 
             /* ========================================================================
-             * 9. SI YA TIENE PRÉSTAMO VIGENTE, EL LÍQUIDO DEBE QUEDAR EN CERO
-             * ------------------------------------------------------------------------
-             * Esta regla evita mostrar líquido como si fuera préstamo nuevo cuando
-             * realmente se están mostrando datos del préstamo vigente.
-             *
-             * Si después implementamos renovación, aquí se puede ajustar para mostrar:
-             * importeLiquidoRenovacion = nuevoLiquido - liquidaCon
-             * ======================================================================== */
-            if (estaVigente)
+            * 9. AJUSTAR IMPORTE LÍQUIDO CUANDO NO HAY ALCANCE
+            * ------------------------------------------------------------------------
+            * Si existe préstamo vigente pero NO se calculó alcance, el líquido queda en cero.
+            *
+            * Si sí existe puedeSolicitar, significa que la rutina de alcance corrió
+            * y debe conservarse el importe líquido calculado.
+            * ======================================================================== */
+            bool tieneAlcanceCalculado = puedeSolicitar > 0;
+
+            if (estaVigente && !tieneAlcanceCalculado)
                 importeLiquido = 0m;
 
             /* ========================================================================
@@ -310,7 +315,7 @@ namespace CMAP_SISTEMAS_MVC.Services
 
                 ClavePrestamo = tipo.ClavePrestamo,
                 SubClave = subClave,
-                NombrePrestamo = tipo.NombrePrestamo,
+                NombrePrestamo = ObtenerNombreVisible(tipo.ClavePrestamo, subClave,tipo.NombrePrestamo),
 
                 FechaPrestamo = fechaPrestamo,
                 ImportePrestamo = importeTotal,
@@ -406,6 +411,14 @@ namespace CMAP_SISTEMAS_MVC.Services
                     tipo,
                     numeroPagos,
                     saldoActualDelTipo);
+            }
+
+            if (tipo.ClavePrestamo == "RE")
+            {
+                return CalcularAlcanceRefaccionario(
+                    ctx,
+                    tipo,
+                    numeroPagos);
             }
 
             return CalcularAlcanceGeneralNoPersonal(
@@ -592,7 +605,7 @@ namespace CMAP_SISTEMAS_MVC.Services
             // VIAJES:
             // Jubilados siempre pueden proyectar.
             // Activos/SNTE solo si tienen movimiento real.
-            if (EsPrestamoViajes(tipo))
+            if (tipo.ClavePrestamo == "PV")
                 return ctx.Estatus != "J";
 
             return tipo.ClavePrestamo switch
@@ -617,30 +630,32 @@ namespace CMAP_SISTEMAS_MVC.Services
         decimal liquidaCon,
         decimal puedeSolicitar)
         {
-            bool tienePrestamoReal =
-                prestamoVigente != null
-                || saldoPrestamo != 0
-                || liquidaCon != 0;
+            string clave = tipo.ClavePrestamo;
+
+            // PP se muestra desde PrestamoPersonalService.
+            if (clave == "PP")
+                return false;
+
+            // ES siempre visible.
+            if (clave == "ES")
+                return true;
+
+            // Saldo real o devolución real SIEMPRE se muestra.
+            bool tieneSaldoReal =
+                prestamoVigente != null &&
+                saldoPrestamo != 0;
 
             bool tieneDevolucion =
-                saldoPrestamo < 0
-                || liquidaCon < 0;
+                saldoPrestamo < 0 ||
+                liquidaCon < 0;
 
-            bool tieneProyeccion =
-                puedeSolicitar > 0;
+            if (tieneSaldoReal || tieneDevolucion)
+                return true;
 
-            /*
-             * EX, GM, AU, VA, VI, etc.
-             * solo aparecen si tienen movimiento real.
-             */
-            if (EsPrestamoSoloSiTieneMovimiento(ctx, tipo))
-                return tienePrestamoReal || tieneDevolucion;
+            // Si no hay saldo real, solo se muestra si hay proyección.
+            bool tieneProyeccion = puedeSolicitar > 0;
 
-            /*
-             * EV, PR, RE, CO, etc.
-             * aparecen por proyección o movimiento.
-             */
-            return tieneProyeccion || tienePrestamoReal;
+            return tieneProyeccion;
         }
 
         /* ============================================================================
@@ -652,17 +667,13 @@ namespace CMAP_SISTEMAS_MVC.Services
         *
         * Reglas:
         *
-        * 1. Si ya existe préstamo vigente:
-        *    -> NO proyectar automáticamente.
+        * 1. Este método solo decide si corre la sección de alcance/proyección.
         *
-        * 2. Si el catálogo está inactivo:
-        *    -> NO proyectar.
+        * 2. La existencia de préstamo vigente NO oculta la fila.
+        *    El saldo, fecha, importe y liquidación se cargan aparte.
         *
-        * 3. VIAJES (PV):
-        *    - Jubilados: sí pueden proyectar siempre.
-        *    - Activos/SNTE: solo proyectan en temporada.
-        *      Fuera de temporada NO proyectan,
-        *      pero sí pueden mostrarse si tienen saldo/devolución.
+        * 3. Más adelante, si el préstamo vigente cumple porcentaje de renovación,
+        *    aquí se permitirá proyectar aun con saldo vigente.
         *
         * 4. GM / EX / PH / PC / PS:
         *    -> No proyectan normalmente.
@@ -670,68 +681,86 @@ namespace CMAP_SISTEMAS_MVC.Services
         * 5. EV / PR / RE / CO:
         *    -> Sí proyectan si están vigentes en catálogo.
         * ============================================================================ */
-        private bool DebeCalcularProyeccion(
+        private bool DebeRealizarRutinasSeccionAlcance(
             EstadoCuentaContextDto ctx,
             TipoPrestamoDto tipo,
             PrestamoVigenteDto? prestamoVigente)
         {
-            /* ========================================================================
-             * 1. SI YA TIENE PRÉSTAMO VIGENTE, NO PROYECTAR
-             * ------------------------------------------------------------------------
-             * Más adelante aquí podremos meter lógica de renovación.
-             * ======================================================================== */
-            bool estaVigente = prestamoVigente != null &&
-                               prestamoVigente.SaldoPrestamo > 0;
+            string clave = tipo.ClavePrestamo;
 
-            if (estaVigente)
+            /* ============================================================
+             * PP se procesa desde PrestamoPersonalService.
+             * ============================================================ */
+            if (clave == "PP")
                 return false;
 
-            /* ========================================================================
-             * 2. SI EL CATÁLOGO NO ESTÁ VIGENTE, NO PROYECTAR
-             * ======================================================================== */
-            if (tipo.Vigente != "S")
+            /* ============================================================
+             * ES siempre proyecta.
+             * ES es quien controla el grupo ES/PC.
+             * ============================================================ */
+            if (clave == "ES")
+                return true;
+
+            /* ============================================================
+             * PC nunca proyecta individualmente.
+             * Solo se muestra si tiene saldo vigente.
+             * ============================================================ */
+            if (clave == "PC")
                 return false;
 
-            /* ========================================================================
-             * 3. VIAJES (VI)
-             * ------------------------------------------------------------------------
+            // EX no proyecta normalmente.
+            // Solo debe mostrarse si tiene saldo real/devolución.
+            if (clave == "EX")
+                return false;
+
+            /* ============================================================
+             * GM / AU / VA / PS / PH
+             * Nunca proyectan normalmente.
+             * Solo muestran movimiento/saldo.
+             * ============================================================ */
+            if (clave is "GM" or "AU" or "VA" or "PS" or "PH")
+                return false;
+
+            /* ============================================================
+             * PV - VIAJES
+             * ------------------------------------------------------------
              * Jubilados:
-             *     siempre pueden proyectar.
+             *     siempre proyectan.
              *
              * Activos/SNTE:
-             *     solo deben proyectar en temporada.
-             *
-             * Fuera de temporada:
-             *     NO proyectar.
-             * ======================================================================== */
-            if (EsPrestamoViajes(tipo) && ctx.Estatus != "J")
-                return false;
-
-            /* ========================================================================
-             * 4. PRÉSTAMOS QUE NORMALMENTE NO PROYECTAN
-             * ======================================================================== */
-            return tipo.ClavePrestamo switch
+             *     solo si está vigente.
+             * ============================================================ */
+            if (clave == "PV")
             {
-                "GM" => false,
-                "EX" => false,
-                "PH" => false,
-                "PC" => false,
-                "PS" => false,
+                if (ctx.Estatus == "J")
+                    return true;
 
-                _ => true
-            };
-        }
+                return tipo.Vigente == "S";
+            }
 
-        /* ============================================================================
-        * IDENTIFICAR PRÉSTAMO DE VIAJES
-        * ----------------------------------------------------------------------------
-        * En la base de datos:
-        * PV = PRÉSTAMO VIAJES T.
-        * VI = PRÉSTAMO VIVIENDA
-        * ============================================================================ */
-        private bool EsPrestamoViajes(TipoPrestamoDto tipo)
-        {
-            return tipo.ClavePrestamo == "PV";
+            /* ============================================================
+             * PE - PREPARACIÓN PROFESIONAL
+             * ------------------------------------------------------------
+             * Jubilados:
+             *     nunca proyectan.
+             *
+             * Activos/SNTE:
+             *     solo si está vigente.
+             * ============================================================ */
+            if (clave == "PE")
+            {
+                if (ctx.Estatus == "J")
+                    return false;
+
+                return tipo.Vigente == "S";
+            }
+
+            /* ============================================================
+             * REGLA GENERAL
+             * ------------------------------------------------------------
+             * EV / PR / RE / VI / etc.
+             * ============================================================ */
+            return tipo.Vigente == "S";
         }
 
 
@@ -841,6 +870,59 @@ namespace CMAP_SISTEMAS_MVC.Services
             return (
                 Math.Round(puedeSolicitar, 2),
                 Math.Round(importeLiquidoObjetivo, 2)
+            );
+        }
+
+        private (decimal puedeSolicitar, decimal importeLiquido) CalcularAlcanceRefaccionario(
+        EstadoCuentaContextDto ctx,
+        TipoPrestamoDto tipo,
+        int numeroPagos)
+        {
+            decimal importeLiquido = tipo.MontoMaximo;
+
+            if (importeLiquido <= 0)
+                return (0m, 0m);
+
+            decimal tasaPeriodo = ObtenerTasaPeriodo(ctx, tipo);
+
+            decimal intereses = CalcularInteresAPrestamo(
+                importeLiquido,
+                tasaPeriodo,
+                numeroPagos);
+
+            DateTime primerPago = ObtenerPrimerPago(ctx);
+
+            int diasAdic = CalcularDiasAdicionales(
+                ctx,
+                tipo.ClavePrestamo,
+                primerPago);
+
+            intereses += CalcularInteresDiasAdicionales(
+                tipo,
+                importeLiquido,
+                diasAdic);
+
+            decimal baseSeguroFondo = importeLiquido + intereses;
+
+            decimal seguro = CalcularSeguroPasivo(
+                importeLiquido,
+                intereses,
+                tipo);
+
+            decimal fondo = CalcularFondoGarantia(
+                importeLiquido,
+                intereses,
+                tipo);
+
+            decimal puedeSolicitar =
+                importeLiquido +
+                intereses +
+                seguro +
+                fondo;
+
+            return (
+                Math.Round(puedeSolicitar, 2),
+                Math.Round(importeLiquido, 2)
             );
         }
 
@@ -1362,8 +1444,9 @@ namespace CMAP_SISTEMAS_MVC.Services
          * ============================================================ */
 
         private string ObtenerNombreVisible(
-            string clavePrestamo,
-            int? subClave)
+     string clavePrestamo,
+     int? subClave,
+     string? nombreCatalogo)
         {
             return (clavePrestamo, subClave) switch
             {
@@ -1371,9 +1454,6 @@ namespace CMAP_SISTEMAS_MVC.Services
                 ("PC", _) => "COMPLEMENTARIO",
                 ("EV", _) => "EVENTOS SOCIALES",
 
-                ("PP", _) => "PERSONAL",
-
-                ("PR", null) => "PRENDARIO NORMAL",
                 ("PR", 0) => "PRENDARIO NORMAL",
                 ("PR", 1) => "PRENDARIO TIPO A",
                 ("PR", 2) => "PRENDARIO TIPO B",
@@ -1381,9 +1461,14 @@ namespace CMAP_SISTEMAS_MVC.Services
                 ("RE", _) => "REFACCIONARIO",
                 ("PV", _) => "VIAJES T.",
                 ("PE", _) => "PREPARACIÓN PROFESIONAL",
-                ("VI", _) => "VIVIENDA",
 
-                _ => clavePrestamo
+                ("VA", _) => "PRESTAMO VARIOS TARJ.CRED",
+
+                // EX no debe proyectar; si algún día aparece por saldo real,
+                // conserva el nombre del catálogo.
+                _ => !string.IsNullOrWhiteSpace(nombreCatalogo)
+                    ? nombreCatalogo.Trim()
+                    : clavePrestamo
             };
         }
 
