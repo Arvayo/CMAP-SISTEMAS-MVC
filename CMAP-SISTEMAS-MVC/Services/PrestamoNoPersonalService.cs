@@ -1405,7 +1405,9 @@ namespace CMAP_SISTEMAS_MVC.Services
                 // REFACCIONARIO
                 "RE" => 50,
 
+                // VIAJES
                 "PV" => 60,
+
                 "VA" => 70,
                 "VI" => 75,
                 "GM" => 80,
