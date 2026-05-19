@@ -223,7 +223,19 @@ namespace CMAP_SISTEMAS_MVC.Services
                     tipo,
                     prestamoPrincipal);
 
-            bool esProyeccion = realizarRutinasSeccionAlcance;
+            if (realizarRutinasSeccionAlcance &&
+                prestamoPrincipal != null &&
+                prestamoPrincipal.SaldoPrestamo > 0 &&
+                (tipo.ClaveRenovacion ?? "").Trim() == "1")
+            {
+               
+                bool cumpleRenovacion = CumplePorcentajeRenovacion(
+                    prestamoPrincipal,
+                    tipo);
+
+                if (!cumpleRenovacion)
+                    realizarRutinasSeccionAlcance = false;
+            }
 
             /* ========================================================================
              * 7. CALCULAR DESCUENTO SI HAY PRÉSTAMO VIGENTE
@@ -329,7 +341,7 @@ namespace CMAP_SISTEMAS_MVC.Services
                 LiquidaCon = liquidaCon,
 
                 EstaVigente = estaVigente,
-                EsProyeccion = esProyeccion,
+                EsProyeccion = realizarRutinasSeccionAlcance,
                 OrdenVisual = ObtenerOrdenVisual(tipo.ClavePrestamo, subClave)
             };
         }
@@ -418,7 +430,18 @@ namespace CMAP_SISTEMAS_MVC.Services
                 return CalcularAlcanceRefaccionario(
                     ctx,
                     tipo,
-                    numeroPagos);
+                    numeroPagos,
+                    saldoActualDelTipo);
+            }
+
+            if (tipo.ClavePrestamo == "PV")
+            {
+                return CalcularAlcanceViajes(
+                    ctx,
+                    tipo,
+                    puedeSolicitar,
+                    numeroPagos,
+                    saldoActualDelTipo);
             }
 
             return CalcularAlcanceGeneralNoPersonal(
@@ -427,6 +450,84 @@ namespace CMAP_SISTEMAS_MVC.Services
                 puedeSolicitar,
                 numeroPagos,
                 saldoActualDelTipo);
+        }
+
+        //____________________________________________________________________________________________________
+        private bool CumplePorcentajeRenovacion(
+        PrestamoVigenteDto prestamo,
+        TipoPrestamoDto tipo)
+        {
+            if (prestamo.ImportePagare <= 0)
+                return false;
+
+            decimal porcentajeCubierto =
+                ((prestamo.ImportePagare - prestamo.SaldoPrestamo)
+                / prestamo.ImportePagare) * 100m;
+
+            return porcentajeCubierto >= tipo.PorcenRenova;
+        }
+        //------------------------------------------------------------------------------------------------------
+
+        private decimal CalcularPorcentajeCubiertoRenovacion(
+            PrestamoVigenteDto prestamo)
+        {
+            if (prestamo.ImportePagare <= 0)
+                return 0m;
+
+            if (prestamo.SaldoPrestamo < 0)
+                return 100m;
+
+            return Math.Round(
+                100m - ((prestamo.SaldoPrestamo * 100m) / prestamo.ImportePagare),
+                4);
+        }
+
+        //------------------------------------------------------------------------------------------------------
+
+        private (decimal puedeSolicitar, decimal importeLiquido) CalcularAlcanceViajes(
+        EstadoCuentaContextDto ctx,
+        TipoPrestamoDto tipo,
+        decimal montoLiquidoObjetivo,
+        int numeroPagos,
+        decimal liquidaCon)
+        {
+            decimal alcancePorSueldoReal = CalcularAlcancePorSueldoSinTope(
+                ctx,
+                liquidaCon > 0 ? liquidaCon : 0m,
+                numeroPagos);
+
+            montoLiquidoObjetivo = tipo.MontoMaximo > 0
+                ? Math.Min(alcancePorSueldoReal, tipo.MontoMaximo)
+                : alcancePorSueldoReal;
+
+            if (!ctx.EsSolicitudEspecial)
+            {
+                decimal topeGlobal = ctx.MisAhorros * 3.5m;
+
+                decimal disponibleGlobal =
+                    topeGlobal -
+                    ctx.SaldoPrestamosTopadosAhorro +
+                    liquidaCon;
+
+                if (disponibleGlobal < 0)
+                    disponibleGlobal = 0m;
+
+                montoLiquidoObjetivo = Math.Min(montoLiquidoObjetivo, disponibleGlobal);
+            }
+
+            montoLiquidoObjetivo = Math.Round(Math.Max(0m, montoLiquidoObjetivo), 2);
+
+            var resultado = CalcularPrestamoLiquidoLegacy(
+                ctx,
+                tipo,
+                montoLiquidoObjetivo,
+                numeroPagos,
+                liquidaCon);
+
+            return (
+                resultado.PuedeSolicitar,
+                resultado.ImporteLiquido
+            );
         }
 
         private int CalcularNumeroPagos(
@@ -449,11 +550,11 @@ namespace CMAP_SISTEMAS_MVC.Services
         * ============================================================ */
 
         private (decimal puedeSolicitar, decimal importeLiquido) CalcularAlcanceGeneralNoPersonal(
-            EstadoCuentaContextDto ctx,
-            TipoPrestamoDto tipo,
-            decimal puedeSolicitar,
-            int numeroPagos,
-            decimal saldoActualDelTipo)
+        EstadoCuentaContextDto ctx,
+        TipoPrestamoDto tipo,
+        decimal puedeSolicitar,
+        int numeroPagos,
+        decimal saldoActualDelTipo)
         {
             if (!ctx.EsSolicitudEspecial)
             {
@@ -488,7 +589,80 @@ namespace CMAP_SISTEMAS_MVC.Services
             );
         }
 
-        /* ============================================================
+        private sealed class ResultadoPrestamoLiquidoLegacy
+        {
+            public decimal PuedeSolicitar { get; set; }
+            public decimal ImporteLiquido { get; set; }
+        }
+
+        private ResultadoPrestamoLiquidoLegacy CalcularPrestamoLiquidoLegacy(
+            EstadoCuentaContextDto ctx,
+            TipoPrestamoDto tipo,
+            decimal montoLiquidoObjetivo,
+            int numeroPagos,
+            decimal liquidaCon)
+        {
+            decimal importeLiquido = montoLiquidoObjetivo - liquidaCon;
+
+            if (importeLiquido < 0)
+                importeLiquido = 0m;
+
+            decimal tasaPeriodo = ObtenerTasaPeriodo(ctx, tipo);
+
+            decimal intereses = CalcularInteresAPrestamo(
+                montoLiquidoObjetivo,
+                tasaPeriodo,
+                numeroPagos);
+
+            DateTime primerPago = ObtenerPrimerPago(ctx);
+
+            int diasAdic = CalcularDiasAdicionales(
+                ctx,
+                tipo.ClavePrestamo,
+                primerPago);
+
+            intereses += CalcularInteresDiasAdicionales(
+                tipo,
+                montoLiquidoObjetivo,
+                diasAdic);
+
+            decimal seguro = 0m;
+
+            if (tipo.PorcenSeguroPasivo > 0)
+            {
+                seguro = Math.Round(
+                    (montoLiquidoObjetivo + intereses) *
+                    (tipo.PorcenSeguroPasivo / 100m),
+                    2);
+            }
+
+            decimal fondo = 0m;
+
+            if (tipo.PorcenFondoGarantia > 0)
+            {
+                fondo = Math.Round(
+                    (montoLiquidoObjetivo + intereses) *
+                    (tipo.PorcenFondoGarantia / 100m),
+                    2);
+
+                if (fondo < 0)
+                    fondo = 0m;
+            }
+
+            decimal puedeSolicitar =
+                montoLiquidoObjetivo +
+                intereses +
+                seguro +
+                fondo;
+
+            return new ResultadoPrestamoLiquidoLegacy
+            {
+                PuedeSolicitar = Math.Round(puedeSolicitar, 2),
+                ImporteLiquido = Math.Round(importeLiquido, 2)
+            };
+        }
+
+         /* ============================================================
          * VB: DameMenorAlcance
          * ------------------------------------------------------------
          * Esta parte representa directamente la selección del menor
@@ -565,6 +739,21 @@ namespace CMAP_SISTEMAS_MVC.Services
             decimal alcancePorSueldo = (sueldoDisponible + amortAnt) * numeroPagos;
 
             return AplicarMontoMaximo(alcancePorSueldo, tipo);
+        }
+
+        private decimal CalcularAlcancePorSueldoSinTope(
+            EstadoCuentaContextDto ctx,
+            decimal amortAnt,
+            int numeroPagos)
+        {
+            decimal sueldoDisponible = Math.Round(ctx.TotSueldo - ctx.ElLimite, 2);
+
+            if (sueldoDisponible < 0)
+                return 0m;
+
+            decimal alcancePorSueldo = (sueldoDisponible + amortAnt) * numeroPagos;
+
+            return Math.Round(alcancePorSueldo, 2);
         }
 
         private decimal AplicarMontoMaximo(
@@ -876,7 +1065,8 @@ namespace CMAP_SISTEMAS_MVC.Services
         private (decimal puedeSolicitar, decimal importeLiquido) CalcularAlcanceRefaccionario(
         EstadoCuentaContextDto ctx,
         TipoPrestamoDto tipo,
-        int numeroPagos)
+        int numeroPagos,
+        decimal saldoActualDelTipo)
         {
             decimal importeLiquido = tipo.MontoMaximo;
 
@@ -902,8 +1092,6 @@ namespace CMAP_SISTEMAS_MVC.Services
                 importeLiquido,
                 diasAdic);
 
-            decimal baseSeguroFondo = importeLiquido + intereses;
-
             decimal seguro = CalcularSeguroPasivo(
                 importeLiquido,
                 intereses,
@@ -920,9 +1108,14 @@ namespace CMAP_SISTEMAS_MVC.Services
                 seguro +
                 fondo;
 
+            decimal importeLiquidoReal = importeLiquido - saldoActualDelTipo;
+
+            if (importeLiquidoReal < 0)
+                importeLiquidoReal = 0m;
+
             return (
                 Math.Round(puedeSolicitar, 2),
-                Math.Round(importeLiquido, 2)
+                Math.Round(importeLiquidoReal, 2)
             );
         }
 
@@ -946,14 +1139,32 @@ namespace CMAP_SISTEMAS_MVC.Services
          * ============================================================ */
 
         private decimal CalcularImporteLiquidoPrestamo(
-            EstadoCuentaContextDto ctx,
-            TipoPrestamoDto tipo,
-            decimal capital,
-            int numeroPagos,
-            decimal saldoPrestamo)
+        EstadoCuentaContextDto ctx,
+        TipoPrestamoDto tipo,
+        decimal capital,
+        int numeroPagos,
+        decimal saldoPrestamo)
         {
             if (capital <= 0 || numeroPagos <= 0)
                 return 0m;
+
+            // ============================================================
+            // CASO ESPECIAL VB: ESPECIAL / ES
+            // ES no usa la fórmula general de ImporteLiquidoPrestamo.
+            // VB calcula:
+            // 1) Quita seguro/fondo
+            // 2) Quita interés normal
+            // 3) Resta saldo anterior si aplica
+            // ============================================================
+            if (tipo.ClavePrestamo == "ES")
+            {
+                return CalcularImporteLiquidoEspecialES(
+                    ctx,
+                    tipo,
+                    capital,
+                    saldoPrestamo
+                );
+            }
 
             decimal tasaPeriodo = ObtenerTasaPeriodo(ctx, tipo);
 
@@ -983,6 +1194,32 @@ namespace CMAP_SISTEMAS_MVC.Services
             decimal importeLiquido =
                 liquidoBruto -
                 (saldoPrestamo - bonificaSeguroPasivo - bonificaIntereses - interesesMoratorios);
+
+            if (importeLiquido < 0)
+                importeLiquido = 0m;
+
+            return Math.Round(importeLiquido, 2);
+        }
+
+        private decimal CalcularImporteLiquidoEspecialES(
+        EstadoCuentaContextDto ctx,
+        TipoPrestamoDto tipo,
+        decimal puedeSolicitar,
+        decimal saldoPrestamo)
+        {
+            decimal factorSeguroFondo =
+                1m
+                + (tipo.PorcenSeguroPasivo / 100m)
+                + (AplicaFondoGarantia(tipo) ? tipo.PorcenFondoGarantia / 100m : 0m);
+
+            decimal importeLiquido = Math.Round(puedeSolicitar / factorSeguroFondo, 2);
+
+            importeLiquido = Math.Round(
+                importeLiquido / (1m + (tipo.TasaIntNormal / 400m)),
+                2
+            );
+
+            importeLiquido -= saldoPrestamo;
 
             if (importeLiquido < 0)
                 importeLiquido = 0m;
@@ -1444,9 +1681,9 @@ namespace CMAP_SISTEMAS_MVC.Services
          * ============================================================ */
 
         private string ObtenerNombreVisible(
-     string clavePrestamo,
-     int? subClave,
-     string? nombreCatalogo)
+        string clavePrestamo,
+        int? subClave,
+        string? nombreCatalogo)
         {
             return (clavePrestamo, subClave) switch
             {
@@ -1454,15 +1691,19 @@ namespace CMAP_SISTEMAS_MVC.Services
                 ("PC", _) => "COMPLEMENTARIO",
                 ("EV", _) => "EVENTOS SOCIALES",
 
-                ("PR", 0) => "PRENDARIO NORMAL",
-                ("PR", 1) => "PRENDARIO TIPO A",
-                ("PR", 2) => "PRENDARIO TIPO B",
+                ("PR", 1) => "PRENDARIO NORMAL",
+                ("PR", 2) => "PRENDARIO TIPO A",
+                ("PR", 3) => "PRENDARIO TIPO B",
+
+                ("PR", _) => !string.IsNullOrWhiteSpace(nombreCatalogo)
+                    ? nombreCatalogo.Trim()
+    :               "PRENDARIO",
 
                 ("RE", _) => "REFACCIONARIO",
                 ("PV", _) => "VIAJES T.",
                 ("PE", _) => "PREPARACIÓN PROFESIONAL",
 
-                ("VA", _) => "PRESTAMO VARIOS TARJ.CRED",
+                ("VA", _) => "PRESTAMO VARIOS",
 
                 // EX no debe proyectar; si algún día aparece por saldo real,
                 // conserva el nombre del catálogo.
