@@ -271,6 +271,7 @@ namespace CMAP_SISTEMAS_MVC.Services
                     ctx,
                     tipo,
                     saldoTotal,
+                    liquidaCon,
                     tipo.PlazoMaximo);
             }
 
@@ -378,6 +379,7 @@ namespace CMAP_SISTEMAS_MVC.Services
             EstadoCuentaContextDto ctx,
             TipoPrestamoDto tipo,
             decimal saldoActualDelTipo,
+            decimal liquidaCon,
             int plazoMeses)
         {
             if (tipo.Vigente != "S")
@@ -410,7 +412,7 @@ namespace CMAP_SISTEMAS_MVC.Services
                 return CalcularAlcanceEventosSociales(
                     ctx,
                     tipo,
-                    saldoActualDelTipo,
+                    liquidaCon,
                     numeroPagos,
                     alcancePorSueldo,
                     puedeSolicitar);
@@ -422,7 +424,7 @@ namespace CMAP_SISTEMAS_MVC.Services
                     ctx,
                     tipo,
                     numeroPagos,
-                    saldoActualDelTipo);
+                    liquidaCon);
             }
 
             if (tipo.ClavePrestamo == "RE")
@@ -431,7 +433,7 @@ namespace CMAP_SISTEMAS_MVC.Services
                     ctx,
                     tipo,
                     numeroPagos,
-                    saldoActualDelTipo);
+                    liquidaCon);
             }
 
             if (tipo.ClavePrestamo == "PV")
@@ -441,7 +443,7 @@ namespace CMAP_SISTEMAS_MVC.Services
                     tipo,
                     puedeSolicitar,
                     numeroPagos,
-                    saldoActualDelTipo);
+                    liquidaCon);
             }
 
             return CalcularAlcanceGeneralNoPersonal(
@@ -449,7 +451,7 @@ namespace CMAP_SISTEMAS_MVC.Services
                 tipo,
                 puedeSolicitar,
                 numeroPagos,
-                saldoActualDelTipo);
+                liquidaCon);
         }
 
         //____________________________________________________________________________________________________
