@@ -112,22 +112,26 @@ namespace CMAP_SISTEMAS_MVC.Services
             TipoPrestamoDto tipo,
             List<PrestamoVigenteDto> vigentes)
         {
-            /* ========================================================================
-             * 1. FILTRAR PRÉSTAMOS VIGENTES DEL TIPO ACTUAL
-             * ------------------------------------------------------------------------
-             * Para PP se agrupan todos los personales.
-             * Para los demás préstamos se respeta ClavePrestamo + SubCve.
-             * Esto es importante para PR, VI, VA u otros préstamos con modalidades.
-             * ======================================================================== */
+            /* ============================================================
+            * PP NO SE PROYECTA EN PRÉSTAMOS NO PERSONALES
+            * ------------------------------------------------------------
+            * VB:
+            * - ActualizaTablaTemporalReporte no proyecta PP.
+            * - Solo conserva saldo vigente para NuevaAgregaPersonales.
+            *
+            * MVC:
+            * - PrestamoNoPersonalService no debe calcular PP.
+            * - PP debe procesarse en PrestamoPersonalService.
+            * ============================================================ */
+            if (tipo.ClavePrestamo == "PP")
+                return null;
+
+            /* ============================================================
+            * 1. FILTRAR PRÉSTAMOS VIGENTES DEL TIPO ACTUAL
+            * ============================================================ */
             List<PrestamoVigenteDto> prestamosDelTipo;
 
-            if (tipo.ClavePrestamo == "PP")
-            {
-                prestamosDelTipo = vigentes
-                    .Where(p => p.TipoPrestamo == "PP")
-                    .ToList();
-            }
-            else if (tipo.ClavePrestamo == "PV")
+            if (tipo.ClavePrestamo == "PV")
             {
                 prestamosDelTipo = vigentes
                     .Where(p =>
@@ -141,19 +145,6 @@ namespace CMAP_SISTEMAS_MVC.Services
                     .Where(p =>
                         p.TipoPrestamo == tipo.ClavePrestamo &&
                         (p.SubCve ?? 0) == (tipo.SubCve ?? 0))
-                    .ToList();
-            }
-
-            /* ========================================================================
-             * 2. PP SOLO DEBE TOMAR EL MÁS RECIENTE
-             * ------------------------------------------------------------------------
-             * Si existen varios personales, para el estado de cuenta se toma el último.
-             * ======================================================================== */
-            if (tipo.ClavePrestamo == "PP" && prestamosDelTipo.Any())
-            {
-                prestamosDelTipo = prestamosDelTipo
-                    .OrderByDescending(x => x.FechaPrestamo ?? DateTime.MinValue)
-                    .Take(1)
                     .ToList();
             }
 
@@ -1555,7 +1546,22 @@ namespace CMAP_SISTEMAS_MVC.Services
                 lista.Add(tipoPc);
             }
 
-            var orden = new[] { "ES", "PC", "EV", "PR", "RE", "PV", "PE", "VI", "VA", "GM", "EX", "PH" };
+            var orden = new[]
+            {
+                "ES", "PC",
+                "DN",
+                "EV",
+                "EX",
+                "PP",
+                "PR",
+                "VA",
+                "RE",
+                "PV",
+                "PE",
+                "VI",
+                "GM",
+                "PH"
+            };
 
             return lista
                 .Where(x =>
@@ -1691,8 +1697,9 @@ namespace CMAP_SISTEMAS_MVC.Services
             {
                 ("ES", _) => "ESPECIAL",
                 ("PC", _) => "COMPLEMENTARIO",
-                ("EV", _) => "EVENTOS SOCIALES",
 
+                ("EV", _) => "EVENTOS SOCIALES",
+                ("DN", _) => "DESASTRE NATURAL",
                 ("PR", 1) => "PRENDARIO NORMAL",
                 ("PR", 2) => "PRENDARIO TIPO A",
                 ("PR", 3) => "PRENDARIO TIPO B",
@@ -1722,25 +1729,21 @@ namespace CMAP_SISTEMAS_MVC.Services
                 "ES" => 10,
                 "PC" => 10,
 
-                "EV" => 20,
+                "DN" => 20,
+                "EV" => 30,
+                "EX" => 40,
 
-                // PERSONAL
-                "PP" => 30,
+                // PERSONAL se agrega desde PrestamoPersonalService
+                "PP" => 50,
 
-                // PRENDARIOS
-                "PR" => 40,
-
-                // REFACCIONARIO
-                "RE" => 50,
-
-                // VIAJES
-                "PV" => 60,
-
+                "PR" => 60,
                 "VA" => 70,
-                "VI" => 75,
-                "GM" => 80,
-                "EX" => 90,
-                "PH" => 100,
+                "RE" => 80,
+                "PV" => 90,
+                "PE" => 100,
+                "VI" => 110,
+                "GM" => 120,
+                "PH" => 130,
 
                 _ => 999
             };

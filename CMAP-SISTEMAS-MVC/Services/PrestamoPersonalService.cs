@@ -72,6 +72,26 @@ namespace CMAP_SISTEMAS_MVC.Services
                 {
                     if (resumen.PuedeRenovar)
                     {
+                        // Fila PP informativa para la tabla 2: Información de Préstamos
+                        var filaVigente = await ConstruirFilaPrestamoPersonalAsync(
+                            contexto,
+                            tipoBase,
+                            prestamoPP);
+
+                        if (filaVigente != null)
+                        {
+                            filaVigente.NombrePrestamo = "PERSONAL";
+                            filaVigente.ClavePrestamo = "PP";
+                            filaVigente.CantidadPuedeSolicitar = 0m;
+                            filaVigente.ImporteLiquido = 0m;
+                            filaVigente.EstaVigente = true;
+                            filaVigente.EsProyeccion = false;
+                            filaVigente.OrdenVisual = 30;
+
+                            resultado.FilaPrestamoPPVigente = filaVigente;
+                        }
+
+                        // Proyección real para sección 3
                         foreach (var tipo in tiposPP)
                         {
                             var fila = await ConstruirFilaPrestamoPersonalAsync(
@@ -96,6 +116,8 @@ namespace CMAP_SISTEMAS_MVC.Services
                         {
                             filaVigente.NombrePrestamo = "PERSONAL";
                             filaVigente.ClavePrestamo = "PP";
+                            filaVigente.CantidadPuedeSolicitar = 0m;
+                            filaVigente.ImporteLiquido = 0m;
                             filaVigente.EstaVigente = true;
                             filaVigente.EsProyeccion = false;
                             filaVigente.OrdenVisual = 30;
@@ -362,17 +384,19 @@ namespace CMAP_SISTEMAS_MVC.Services
             }
             else
             {
-                puedeRenovar = PuedeRenovarPrestamoPersonal(ctx, tipo, prestamoPP!);
+                var resumen = ConstruirResumenPrestamoPersonal(
+                    ctx,
+                    new List<TipoPrestamoDto> { tipo },
+                    prestamoPP!);
 
-                // Si tiene préstamo vigente y no puede renovar,
-                // se conserva la fila del préstamo vigente,
-                // pero sin importes de nueva proyección.
+                puedeRenovar = resumen.PuedeRenovar;
+
                 if (!puedeRenovar)
                 {
                     puedeSolicitar = 0m;
                     importeLiquido = 0m;
 
-                    descuento = prestamoPP.ImporteAmortizacion > 0
+                    descuento = prestamoPP!.ImporteAmortizacion > 0
                         ? prestamoPP.ImporteAmortizacion
                         : Math.Round(importePrestamo / (tipo.PlazoRenovar > 0 ? tipo.PlazoRenovar : 1), 2);
                 }
@@ -392,6 +416,12 @@ namespace CMAP_SISTEMAS_MVC.Services
                     tipo,
                     prestamoPP,
                     puedeSolicitar);
+            }
+
+            if (tienePrestamoVigente && !puedeRenovar)
+            {
+                puedeSolicitar = 0m;
+                importeLiquido = 0m;
             }
 
 
