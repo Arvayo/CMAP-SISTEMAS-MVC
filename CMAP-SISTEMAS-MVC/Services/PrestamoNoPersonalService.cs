@@ -112,146 +112,258 @@ namespace CMAP_SISTEMAS_MVC.Services
             TipoPrestamoDto tipo,
             List<PrestamoVigenteDto> vigentes)
         {
-            /* ============================================================
-            * PP NO SE PROYECTA EN PRÉSTAMOS NO PERSONALES
-            * ------------------------------------------------------------
-            * VB:
-            * - ActualizaTablaTemporalReporte no proyecta PP.
-            * - Solo conserva saldo vigente para NuevaAgregaPersonales.
-            *
-            * MVC:
-            * - PrestamoNoPersonalService no debe calcular PP.
-            * - PP debe procesarse en PrestamoPersonalService.
-            * ============================================================ */
+            // ============================================================
+            // PP se procesa exclusivamente en PrestamoPersonalService
+            // ============================================================
             if (tipo.ClavePrestamo == "PP")
                 return null;
 
-            /* ============================================================
-            * 1. FILTRAR PRÉSTAMOS VIGENTES DEL TIPO ACTUAL
-            * ============================================================ */
-            List<PrestamoVigenteDto> prestamosDelTipo;
+            // ============================================================
+            // 1. OBTENER DATOS DEL PRÉSTAMO
+            // ============================================================
+            var datosPrestamo = ObtenerDatosPrestamo(
+                tipo,
+                vigentes);
 
-            if (tipo.ClavePrestamo == "PV")
+            // ============================================================
+            // 2. EVALUAR PROYECCIÓN / ALCANCE
+            // ============================================================
+            var alcance = EvaluarAlcancePrestamo(
+                ctx,
+                tipo,
+                datosPrestamo);
+
+            // ============================================================
+            // 3. CALCULAR DESCUENTO VIGENTE
+            // ============================================================
+            decimal descuento = CalcularDescuentoPrestamo(
+                datosPrestamo);
+
+            // ============================================================
+            // 4. AJUSTAR LÍQUIDO SI NO HUBO ALCANCE
+            // ============================================================
+            if (datosPrestamo.EstaVigente &&
+                alcance.PuedeSolicitar <= 0)
             {
-                prestamosDelTipo = vigentes
-                    .Where(p =>
-                        p.TipoPrestamo == "PV" &&
-                        (p.SubCve ?? 0) == (tipo.SubCve ?? 0))
-                    .ToList();
+                alcance.ImporteLiquido = 0m;
             }
-            else
+
+            // ============================================================
+            // 5. VALIDAR SI LA FILA DEBE MOSTRARSE
+            // ============================================================
+            bool mostrar = DebeMostrarFilaPrestamo(
+                ctx,
+                tipo,
+                datosPrestamo.PrestamoPrincipal,
+                datosPrestamo.SaldoTotal,
+                datosPrestamo.LiquidaCon,
+                alcance.PuedeSolicitar);
+
+            if (!mostrar)
+                return null;
+
+            // ============================================================
+            // 6. DETERMINAR SUBCLAVE VISUAL
+            // ============================================================
+            int subClave =
+                datosPrestamo.PrestamoPrincipal?.SubCve
+                ?? tipo.SubCve
+                ?? 0;
+
+            // ============================================================
+            // 7. CONSTRUIR FILA FINAL
+            // ============================================================
+            return new EstadoCuentaRowsDto
             {
-                prestamosDelTipo = vigentes
-                    .Where(p =>
-                        p.TipoPrestamo == tipo.ClavePrestamo &&
-                        (p.SubCve ?? 0) == (tipo.SubCve ?? 0))
-                    .ToList();
-            }
+                IdReporte = ctx.IdReporte,
+                ClavePension = ctx.ClavePension,
 
-            /* ========================================================================
-             * 3. ACUMULAR SALDO E IMPORTE
-             * ------------------------------------------------------------------------
-             * saldoTotal:
-             * - Puede ser positivo: préstamo con saldo pendiente.
-             * - Puede ser negativo: devolución pendiente por cobro de más.
-             *
-             * importeTotal:
-             * - Importe original del pagaré vigente encontrado.
-             * ======================================================================== */
-            decimal saldoTotal = prestamosDelTipo.Sum(x => x.SaldoPrestamo);
-            decimal importeTotal = prestamosDelTipo.Sum(x => x.ImportePagare);
+                ClavePrestamo = tipo.ClavePrestamo,
+                SubClave = subClave,
 
-            /* ========================================================================
-             * 4. SELECCIONAR PRÉSTAMO PRINCIPAL
-             * ------------------------------------------------------------------------
-             * Se usa el más reciente para tomar fechas, plazo, liquidaCon, descuento,
-             * subclave y demás datos visibles del estado de cuenta.
-             * ======================================================================== */
+                NombrePrestamo = ObtenerNombreVisible(
+                    tipo.ClavePrestamo,
+                    subClave,
+                    tipo.NombrePrestamo),
+
+                FechaPrestamo = datosPrestamo.FechaPrestamo,
+                ImportePrestamo = datosPrestamo.ImporteTotal,
+
+                PlazoMeses =
+                    datosPrestamo.PrestamoPrincipal?.NumMesesPrestamo
+                    ?? tipo.PlazoMaximo,
+
+                FechaVencimiento = datosPrestamo.FechaVencimiento,
+
+                SaldoPrestamo = datosPrestamo.SaldoTotal,
+
+                CantidadPuedeSolicitar = alcance.PuedeSolicitar,
+                ImporteLiquido = alcance.ImporteLiquido,
+
+                Descuento = descuento,
+                LiquidaCon = datosPrestamo.LiquidaCon,
+
+                EstaVigente = datosPrestamo.EstaVigente,
+                EsProyeccion = alcance.RealizarRutinasSeccionAlcance,
+
+                OrdenVisual = ObtenerOrdenVisual(
+                    tipo.ClavePrestamo,
+                    subClave)
+            };
+        }
+
+        /* ============================================================================
+        * DTO INTERNO: DatosPrestamoNoPersonal
+        * ----------------------------------------------------------------------------
+        * Agrupa los datos reales encontrados para el tipo de préstamo actual.
+        *
+        * Objetivo:
+        * Evitar variables sueltas dentro de ConstruirFilaPorTipo y concentrar en un
+        * solo objeto la información vigente del préstamo:
+        * - préstamos encontrados del mismo tipo/subclave
+        * - saldo total
+        * - importe total
+        * - préstamo principal más reciente
+        * - liquidaCon
+        * - fechas visibles
+        * - bandera de vigencia real
+        *
+        * Importante:
+        * Esta clase no representa una tabla de base de datos.
+        * Solo es un contenedor interno para ordenar la rutina.
+        * ============================================================================ */
+        private sealed class DatosPrestamoNoPersonal
+        {
+            public List<PrestamoVigenteDto> PrestamosDelTipo { get; set; } = new();
+
+            public decimal SaldoTotal { get; set; }
+
+            public decimal ImporteTotal { get; set; }
+
+            public PrestamoVigenteDto? PrestamoPrincipal { get; set; }
+
+            public decimal LiquidaCon { get; set; }
+
+            public DateTime? FechaPrestamo { get; set; }
+
+            public DateTime? FechaVencimiento { get; set; }
+
+            public bool EstaVigente { get; set; }
+        }
+
+        /* ============================================================================
+        * OBTENER DATOS DEL PRÉSTAMO
+        * ----------------------------------------------------------------------------
+        * Primera etapa de la rutina.
+        *
+        * Responsabilidades:
+        * 1. Filtrar los préstamos vigentes que corresponden al tipo/subclave actual.
+        * 2. Sumar saldo e importe original del pagaré.
+        * 3. Seleccionar el préstamo principal más reciente.
+        * 4. Obtener datos visibles: fechas, liquidaCon y bandera de vigencia.
+        *
+        * Regla:
+        * Un préstamo se considera vigente real cuando existe préstamo principal
+        * y su SaldoPrestamo es mayor a cero.
+        *
+        * Nota:
+        * Si el saldo es negativo, no se considera adeudo vigente, pero puede mostrarse
+        * después como devolución pendiente.
+        * ============================================================================ */
+        private DatosPrestamoNoPersonal ObtenerDatosPrestamo(
+            TipoPrestamoDto tipo,
+            List<PrestamoVigenteDto> vigentes)
+        {
+            var prestamosDelTipo = vigentes
+                .Where(p =>
+                    p.TipoPrestamo == tipo.ClavePrestamo &&
+                    (p.SubCve ?? 0) == (tipo.SubCve ?? 0))
+                .ToList();
+
             var prestamoPrincipal = prestamosDelTipo
                 .OrderByDescending(x => x.FechaPrestamo ?? DateTime.MinValue)
                 .FirstOrDefault();
 
-            decimal liquidaCon = prestamoPrincipal?.LiquidaCon ?? 0m;
-            DateTime? fechaPrestamo = prestamoPrincipal?.FechaPrestamo;
-            DateTime? fechaVencimiento = prestamoPrincipal?.FechaVencimiento;
+            return new DatosPrestamoNoPersonal
+            {
+                PrestamosDelTipo = prestamosDelTipo,
+                SaldoTotal = prestamosDelTipo.Sum(x => x.SaldoPrestamo),
+                ImporteTotal = prestamosDelTipo.Sum(x => x.ImportePagare),
+                PrestamoPrincipal = prestamoPrincipal,
+                LiquidaCon = prestamoPrincipal?.LiquidaCon ?? 0m,
+                FechaPrestamo = prestamoPrincipal?.FechaPrestamo,
+                FechaVencimiento = prestamoPrincipal?.FechaVencimiento,
+                EstaVigente = prestamoPrincipal != null &&
+                              prestamoPrincipal.SaldoPrestamo > 0
+            };
+        }
 
-            /* ========================================================================
-             * 5. DETERMINAR SI EXISTE PRÉSTAMO VIGENTE REAL
-             * ------------------------------------------------------------------------
-             * Se considera vigente real cuando existe préstamo y su saldo es positivo.
-             *
-             * Nota:
-             * Si el saldo es negativo, no es "vigente" como adeudo, pero sí debe poder
-             * mostrarse porque representa devolución pendiente.
-             * ======================================================================== */
-            bool estaVigente = prestamoPrincipal != null &&
-                               prestamoPrincipal.SaldoPrestamo > 0;
+        /* ============================================================================
+        * DTO INTERNO: ResultadoAlcanceNoPersonal
+        * ----------------------------------------------------------------------------
+        * Agrupa el resultado de la etapa de alcance/proyección.
+        *
+        * Contiene:
+        * - si debe ejecutarse la sección de alcance
+        * - cuánto puede solicitar el socio
+        * - importe líquido calculado
+        *
+        * Objetivo:
+        * Separar la decisión de proyectar del cálculo visual de la fila.
+        * ============================================================================ */
 
-            /* ========================================================================
-            * 6. DECIDIR SI SE EJECUTA LA SECCIÓN DE ALCANCE / PROYECCIÓN
-            * ------------------------------------------------------------------------
-            * Esta decisión replica la bandera VB:
-            *
-            * realizarRutinasSeccionAlcance = True / False
-            *
-            * Importante:
-            * - Esto NO decide si se muestra saldo real.
-            * - SaldoPrestamo > 0 o SaldoPrestamo < 0 se muestra aparte.
-            * - Esto solo decide si se calcula PuedeSolicitar, ImporteLiquido y Descuento.
-            *
-            * Ejemplos:
-            * - ES proyecta como préstamo común ligado a ES/PC.
-            * - PC no proyecta individualmente.
-            * - PV proyecta según estatus/temporada.
-            * - PE proyecta solo para activos si está vigente.
-            * - EV / PR / RE / VI proyectan si el catálogo está vigente.
-            * - GM / AU / VA / PS / PH no proyectan normalmente.
-            * - EX proyecta solo si está vigente.
-            * ======================================================================== */
+        private sealed class ResultadoAlcanceNoPersonal
+        {
+            public bool RealizarRutinasSeccionAlcance { get; set; }
+
+            public decimal PuedeSolicitar { get; set; }
+
+            public decimal ImporteLiquido { get; set; }
+        }
+
+        /* ============================================================================
+        * EVALUAR ALCANCE DEL PRÉSTAMO
+        * ----------------------------------------------------------------------------
+        * Segunda etapa de la rutina.
+        *
+        * Responsabilidades:
+        * 1. Determinar si el tipo de préstamo debe ejecutar alcance/proyección.
+        * 2. Validar renovación si existe saldo vigente y ClaveRenovacion = "1".
+        * 3. Ejecutar CalcularAlcanceNoPersonal únicamente cuando aplica.
+        *
+        * Regla importante:
+        * No decide si la fila se muestra.
+        * Solo decide si se calculan:
+        * - PuedeSolicitar
+        * - ImporteLiquido
+        * - bandera EsProyeccion
+        *
+        * Referencia VB:
+        * Replica la bandera realizarRutinasSeccionAlcance.
+        * ============================================================================ */
+        private ResultadoAlcanceNoPersonal EvaluarAlcancePrestamo(
+            EstadoCuentaContextDto ctx,
+            TipoPrestamoDto tipo,
+            DatosPrestamoNoPersonal datosPrestamo)
+        {
             bool realizarRutinasSeccionAlcance =
                 DebeRealizarRutinasSeccionAlcance(
                     ctx,
                     tipo,
-                    prestamoPrincipal);
+                    datosPrestamo.PrestamoPrincipal);
 
             if (realizarRutinasSeccionAlcance &&
-                prestamoPrincipal != null &&
-                prestamoPrincipal.SaldoPrestamo > 0 &&
+                datosPrestamo.PrestamoPrincipal != null &&
+                datosPrestamo.PrestamoPrincipal.SaldoPrestamo > 0 &&
                 (tipo.ClaveRenovacion ?? "").Trim() == "1")
             {
-               
                 bool cumpleRenovacion = CumplePorcentajeRenovacion(
-                    prestamoPrincipal,
+                    datosPrestamo.PrestamoPrincipal,
                     tipo);
 
                 if (!cumpleRenovacion)
                     realizarRutinasSeccionAlcance = false;
             }
-
-            /* ========================================================================
-             * 7. CALCULAR DESCUENTO SI HAY PRÉSTAMO VIGENTE
-             * ------------------------------------------------------------------------
-             * Equivale al AmortAnt del VB:
-             *
-             * Si saldo < amortización:
-             *     descuento = saldo
-             * Si no:
-             *     descuento = importe amortización
-             * ======================================================================== */
-            decimal descuento = 0m;
-
-            if (estaVigente && prestamoPrincipal != null)
-            {
-                descuento = _prestamoCalculatorService.CalcularDescuento(
-                    prestamoPrincipal.SaldoPrestamo,
-                    prestamoPrincipal.ImporteAmortizacion);
-            }
-
-            /* ========================================================================
-            * 8. CALCULAR ALCANCE / PROYECCIÓN
-            * ------------------------------------------------------------------------
-            * Solo se ejecuta si realizarRutinasSeccionAlcance = true.
-            * ======================================================================== */
 
             decimal puedeSolicitar = 0m;
             decimal importeLiquido = 0m;
@@ -261,82 +373,49 @@ namespace CMAP_SISTEMAS_MVC.Services
                 (puedeSolicitar, importeLiquido) = CalcularAlcanceNoPersonal(
                     ctx,
                     tipo,
-                    saldoTotal,
-                    liquidaCon,
+                    datosPrestamo.SaldoTotal,
+                    datosPrestamo.LiquidaCon,
                     tipo.PlazoMaximo);
             }
 
-            /* ========================================================================
-            * 9. AJUSTAR IMPORTE LÍQUIDO CUANDO NO HAY ALCANCE
-            * ------------------------------------------------------------------------
-            * Si existe préstamo vigente pero NO se calculó alcance, el líquido queda en cero.
-            *
-            * Si sí existe puedeSolicitar, significa que la rutina de alcance corrió
-            * y debe conservarse el importe líquido calculado.
-            * ======================================================================== */
-            bool tieneAlcanceCalculado = puedeSolicitar > 0;
-
-            if (estaVigente && !tieneAlcanceCalculado)
-                importeLiquido = 0m;
-
-            /* ========================================================================
-             * 10. DECIDIR SI LA FILA SE DEBE MOSTRAR
-             * ------------------------------------------------------------------------
-             * Este helper reemplaza los return null tempranos.
-             *
-             * Permite casos como:
-             * - Viajes no proyecta, pero aparece si tiene saldo negativo.
-             * - VA aparece si tiene liquidación negativa.
-             * - GM / EX / PH no aparecen vacíos.
-             * - EV / PR aparecen por proyección.
-             * ======================================================================== */
-            bool debeMostrar = DebeMostrarFilaPrestamo(
-                ctx,
-                tipo,
-                prestamoPrincipal,
-                saldoTotal,
-                liquidaCon,
-                puedeSolicitar);
-
-            if (!debeMostrar)
-                return null;
-
-            /* ========================================================================
-             * 11. DETERMINAR SUBCLAVE VISUAL
-             * ------------------------------------------------------------------------
-             * Si existe préstamo real, se usa su SubCve.
-             * Si no, se usa la SubCve del catálogo.
-             * ======================================================================== */
-            int subClave = prestamoPrincipal?.SubCve ?? tipo.SubCve ?? 0;
-
-            /* ========================================================================
-             * 12. CONSTRUIR FILA FINAL DEL ESTADO DE CUENTA
-             * ======================================================================== */
-            return new EstadoCuentaRowsDto
+            return new ResultadoAlcanceNoPersonal
             {
-                IdReporte = ctx.IdReporte,
-                ClavePension = ctx.ClavePension,
-
-                ClavePrestamo = tipo.ClavePrestamo,
-                SubClave = subClave,
-                NombrePrestamo = ObtenerNombreVisible(tipo.ClavePrestamo, subClave,tipo.NombrePrestamo),
-
-                FechaPrestamo = fechaPrestamo,
-                ImportePrestamo = importeTotal,
-                PlazoMeses = prestamoPrincipal?.NumMesesPrestamo ?? tipo.PlazoMaximo,
-                FechaVencimiento = fechaVencimiento,
-
-                SaldoPrestamo = saldoTotal,
-                CantidadPuedeSolicitar = puedeSolicitar,
-                ImporteLiquido = importeLiquido,
-                Descuento = descuento,
-                LiquidaCon = liquidaCon,
-
-                EstaVigente = estaVigente,
-                EsProyeccion = realizarRutinasSeccionAlcance,
-                OrdenVisual = ObtenerOrdenVisual(tipo.ClavePrestamo, subClave)
+                RealizarRutinasSeccionAlcance = realizarRutinasSeccionAlcance,
+                PuedeSolicitar = puedeSolicitar,
+                ImporteLiquido = importeLiquido
             };
         }
+
+
+        /* ============================================================================
+        * CALCULAR DESCUENTO DEL PRÉSTAMO VIGENTE
+        * ----------------------------------------------------------------------------
+        * Tercera etapa de la rutina.
+        *
+        * Responsabilidad:
+        * Calcular el descuento/amortización visible cuando existe préstamo vigente.
+        *
+        * Equivalencia VB:
+        * Representa el cálculo de AmortAnt:
+        * - si saldo < amortización, toma saldo
+        * - si no, toma importe amortización
+        *
+        * Si no hay préstamo vigente real, regresa 0.
+        * ============================================================================ */
+        private decimal CalcularDescuentoPrestamo(
+            DatosPrestamoNoPersonal datosPrestamo)
+        {
+            if (!datosPrestamo.EstaVigente ||
+                datosPrestamo.PrestamoPrincipal == null)
+            {
+                return 0m;
+            }
+
+            return _prestamoCalculatorService.CalcularDescuento(
+                datosPrestamo.PrestamoPrincipal.SaldoPrestamo,
+                datosPrestamo.PrestamoPrincipal.ImporteAmortizacion);
+        }
+
 
         /* ============================================================
          * SECCIÓN 2: CÁLCULO DE ALCANCE
