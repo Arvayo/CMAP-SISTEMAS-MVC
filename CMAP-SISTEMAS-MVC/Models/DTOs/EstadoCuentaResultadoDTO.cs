@@ -1,4 +1,6 @@
-﻿namespace CMAP_SISTEMAS_MVC.Models.DTOs
+﻿using CMAP_SISTEMAS_MVC.Models.ViewModels.EstadoCuenta;
+
+namespace CMAP_SISTEMAS_MVC.Models.DTOs
 {
     public class EstadoCuentaResultadoDTO
     {
@@ -12,5 +14,7 @@
 
         // Sección 3: resumen narrativo del PP vigente
         public PrestamoPersonalResumenDTO? ResumenPrestamoPersonal { get; set; }
+
+        public PrestamoPersonalResumenVM PrestamoPersonal { get; set; } = new();
     }
 }

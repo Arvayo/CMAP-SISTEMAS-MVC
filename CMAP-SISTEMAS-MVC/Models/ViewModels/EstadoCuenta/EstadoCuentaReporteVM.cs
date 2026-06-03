@@ -19,5 +19,6 @@ namespace CMAP_SISTEMAS_MVC.Models.ViewModels.EstadoCuenta
         public string? Linea5_1 { get; set; }
 
         public List<EstadoCuentaRowVM> Prestamos { get; set; } = new();
+        public PrestamoPersonalResumenVM PrestamoPersonal { get; set; } = new();
     }
 }

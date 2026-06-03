@@ -4,20 +4,14 @@
     ViewData["Title"] = "Estado de Cuenta";
 }
 
-<div class="card shadow-sm border-0">
-    <div class="card-body p-4">
+<div class="card shadow-sm border-0 estado-cuenta-main-card">
+    <div class="card-body p-4 estado-cuenta-main-body">
 
         <h1 class="mb-4">Estado de Cuenta</h1>
 
-        @if (!string.IsNullOrWhiteSpace(Model.Mensaje))
+        @if (!string.IsNullOrWhiteSpace(Model.Mensaje) && Model.TipoMensaje == "error")
         {
-            var alertClass = Model.TipoMensaje == "success"
-            ? "alert alert-success"
-            : Model.TipoMensaje == "error"
-            ? "alert alert-danger"
-            : "alert alert-info";
-
-            <div class="@alertClass">
+            <div class="alert alert-danger">
                 @Model.Mensaje
             </div>
         }
@@ -46,7 +40,7 @@
 
             <h4 class="mb-3">1. Información Personal del Socio</h4>
 
-            <div class="card mb-4">
+            <div class="card mb-4 estado-cuenta-info-card">
                 <div class="card-body">
                     <div class="row g-3">
                         <div class="col-md-4">
@@ -101,40 +95,42 @@
         {
             <h4 class="mb-3">2. Información de Préstamos</h4>
 
-            <div class="table-responsive mb-4">
-                <table class="table table-bordered table-hover table-sm align-middle">
-                    <thead class="table-dark">
-                        <tr>
-                            <th>Préstamo</th>
-                            <th>Fecha Préstamo</th>
-                            <th>Importe</th>
-                            <th>Plazo</th>
-                            <th>Fecha Vencimiento</th>
-                            <th>Saldo</th>
-                            <th>Liquida Con</th>
-                            <th>Puede Solicitar</th>
-                            <th>Importe Líquido</th>
-                            <th>Descuento</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach (var item in Model.Resultado.PrestamosNoPersonales)
-                        {
+            <div class="estado-cuenta-prestamos-card mb-4">
+                <div class="table-responsive estado-cuenta-prestamos-wrapper">
+                    <table class="table table-hover table-sm align-middle estado-cuenta-prestamos-table">
+                        <thead>
                             <tr>
-                                <td>@item.NombrePrestamo</td>
-                                <td>@(item.FechaPrestamo?.ToString("dd/MM/yyyy") ?? "")</td>
-                                <td>@item.ImportePrestamo.ToString("N2")</td>
-                                <td>@item.PlazoMeses</td>
-                                <td>@(item.FechaVencimiento?.ToString("dd/MM/yyyy") ?? "")</td>
-                                <td>@item.SaldoPrestamo.ToString("N2")</td>
-                                <td>@item.LiquidaCon.GetValueOrDefault().ToString("N2")</td>
-                                <td>@item.CantidadPuedeSolicitar.ToString("N2")</td>
-                                <td>@item.ImporteLiquido.ToString("N2")</td>
-                                <td>@item.Descuento.GetValueOrDefault().ToString("N2")</td>
+                                <th>Préstamo</th>
+                                <th>Fecha Préstamo</th>
+                                <th>Importe</th>
+                                <th>Plazo</th>
+                                <th>Fecha Vencimiento</th>
+                                <th>Saldo</th>
+                                <th>Liquida Con</th>
+                                <th>Puede Solicitar</th>
+                                <th>Importe Líquido</th>
+                                <th>Descuento</th>
                             </tr>
-                        }
-                    </tbody>
-                </table>
+                        </thead>
+                        <tbody>
+                            @foreach (var item in Model.Resultado.PrestamosNoPersonales)
+                            {
+                                <tr>
+                                    <td>@item.NombrePrestamo</td>
+                                    <td>@(item.FechaPrestamo?.ToString("dd/MM/yyyy") ?? "")</td>
+                                    <td>@item.ImportePrestamo.ToString("N2")</td>
+                                    <td>@item.PlazoMeses</td>
+                                    <td>@(item.FechaVencimiento?.ToString("dd/MM/yyyy") ?? "")</td>
+                                    <td>@item.SaldoPrestamo.ToString("N2")</td>
+                                    <td>@item.LiquidaCon.GetValueOrDefault().ToString("N2")</td>
+                                    <td>@item.CantidadPuedeSolicitar.ToString("N2")</td>
+                                    <td>@item.ImporteLiquido.ToString("N2")</td>
+                                    <td>@item.Descuento.GetValueOrDefault().ToString("N2")</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
             </div>
         }
 

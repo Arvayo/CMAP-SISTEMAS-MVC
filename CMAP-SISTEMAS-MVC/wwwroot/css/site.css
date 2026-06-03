@@ -927,3 +927,327 @@ body.dark {
         font-size: 0.92rem;
     }
 }
+
+/* ==========================================================================
+   ESTADO DE CUENTA - TABLA DE PRÉSTAMOS EN INDEX
+   ========================================================================== */
+
+.estado-cuenta-prestamos-card {
+    background: #ffffff !important;
+    border: 1px solid #d8dee9 !important;
+    border-radius: 12px !important;
+    box-shadow: 0 4px 14px rgba(15, 23, 42, 0.08) !important;
+    overflow: hidden !important;
+    padding: 0 !important;
+}
+
+.estado-cuenta-prestamos-wrapper {
+    overflow-x: auto !important;
+}
+
+.estado-cuenta-prestamos-table {
+    width: 100% !important;
+    min-width: 1080px !important;
+    table-layout: fixed !important; /* CLAVE: mismo ancho para th y td */
+    margin-bottom: 0 !important;
+    border-collapse: separate !important;
+    border-spacing: 0 !important;
+    color: #1f2937 !important;
+}
+
+    .estado-cuenta-prestamos-table > thead > tr > th,
+    .estado-cuenta-prestamos-table > tbody > tr > td {
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+        white-space: nowrap !important;
+    }
+
+    .estado-cuenta-prestamos-table > thead > tr > th {
+        background-color: #243447 !important;
+        color: #ffffff !important;
+        /* Encabezados más grandes */
+        padding: 0.58rem 0.38rem !important;
+        font-size: 0.82rem !important;
+        font-weight: 800 !important;
+        line-height: 1.1 !important;
+        letter-spacing: 0.025em !important;
+        text-transform: uppercase !important;
+        border: none !important;
+        vertical-align: middle !important;
+    }
+
+        .estado-cuenta-prestamos-table > thead > tr > th:first-child {
+            border-top-left-radius: 12px !important;
+        }
+
+        .estado-cuenta-prestamos-table > thead > tr > th:last-child {
+            border-top-right-radius: 12px !important;
+        }
+
+    .estado-cuenta-prestamos-table > tbody > tr > td {
+        padding: 0.58rem 0.38rem !important;
+        font-size: 0.84rem !important;
+        vertical-align: middle !important;
+        border-top: 1px solid #e6eaf0 !important;
+        background: #ffffff !important;
+    }
+
+    .estado-cuenta-prestamos-table > tbody > tr:nth-child(even) > td {
+        background: #fbfcfe !important;
+    }
+
+    .estado-cuenta-prestamos-table > tbody > tr:hover > td {
+        background: #eef6ff !important;
+    }
+
+    /* ==========================================================================
+   ESTADO DE CUENTA - ALINEACIÓN POR COLUMNA
+   ========================================================================== */
+
+    /* Préstamo */
+    .estado-cuenta-prestamos-table > thead > tr > th:nth-child(1),
+    .estado-cuenta-prestamos-table > tbody > tr > td:nth-child(1) {
+        text-align: left !important;
+    }
+
+    /* Fechas */
+    .estado-cuenta-prestamos-table > thead > tr > th:nth-child(2),
+    .estado-cuenta-prestamos-table > tbody > tr > td:nth-child(2),
+    .estado-cuenta-prestamos-table > thead > tr > th:nth-child(5),
+    .estado-cuenta-prestamos-table > tbody > tr > td:nth-child(5) {
+        text-align: center !important;
+    }
+
+    /* Plazo */
+    .estado-cuenta-prestamos-table > thead > tr > th:nth-child(4),
+    .estado-cuenta-prestamos-table > tbody > tr > td:nth-child(4) {
+        text-align: center !important;
+    }
+
+    /* Importes */
+    .estado-cuenta-prestamos-table > thead > tr > th:nth-child(3),
+    .estado-cuenta-prestamos-table > tbody > tr > td:nth-child(3),
+    .estado-cuenta-prestamos-table > thead > tr > th:nth-child(6),
+    .estado-cuenta-prestamos-table > tbody > tr > td:nth-child(6),
+    .estado-cuenta-prestamos-table > thead > tr > th:nth-child(7),
+    .estado-cuenta-prestamos-table > tbody > tr > td:nth-child(7),
+    .estado-cuenta-prestamos-table > thead > tr > th:nth-child(8),
+    .estado-cuenta-prestamos-table > tbody > tr > td:nth-child(8),
+    .estado-cuenta-prestamos-table > thead > tr > th:nth-child(9),
+    .estado-cuenta-prestamos-table > tbody > tr > td:nth-child(9),
+    .estado-cuenta-prestamos-table > thead > tr > th:nth-child(10),
+    .estado-cuenta-prestamos-table > tbody > tr > td:nth-child(10) {
+        text-align: right !important;
+        font-variant-numeric: tabular-nums !important;
+    }
+
+    /* ==========================================================================
+       ESTADO DE CUENTA - DARK MODE
+       ========================================================================== */
+
+    body.dark .estado-cuenta-prestamos-card {
+        background: #111827 !important;
+        border-color: #374151 !important;
+        box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35) !important;
+    }
+
+    body.dark .estado-cuenta-prestamos-table {
+        color: #e5e7eb !important;
+    }
+
+        body.dark .estado-cuenta-prestamos-table > thead > tr > th {
+            background-color: #0f172a !important;
+            color: #f8fafc !important;
+        }
+
+        /* ==========================================================================
+           ESTADO DE CUENTA - TABLA DE PRÉSTAMOS EN MODO CLARO
+           ========================================================================== */
+
+        body:not(.dark) .estado-cuenta-prestamos-table > thead > tr > th {
+            background-color: #c2410c !important; /* #c2410c - #ea580c Naranja fuerte tipo SNTE */ /* Color Encabezado Original #243447 */
+            color: #ffffff !important;
+}
+        body.dark .estado-cuenta-prestamos-table > tbody > tr > td {
+            background: #111827 !important;
+            border-top-color: #374151 !important;
+        }
+
+        body.dark .estado-cuenta-prestamos-table > tbody > tr:nth-child(even) > td {
+            background: #152033 !important;
+        }
+
+        body.dark .estado-cuenta-prestamos-table > tbody > tr:hover > td {
+            background: rgba(96, 165, 250, 0.14) !important;
+        }
+
+        body.dark .estado-cuenta-prestamos-table > tbody > tr > td:first-child {
+            color: #f8fafc !important;
+        }
+
+        /* ==========================================================================
+       ESTADO DE CUENTA - TABLA DE PRÉSTAMOS EN MODO DARK
+       ========================================================================== */
+
+        /* Primera columna: PRÉSTAMO */
+        body.dark .estado-cuenta-prestamos-table > tbody > tr > td:nth-child(1) {
+            color: #e5e7eb !important;
+            font-weight: 600 !important;
+        }
+
+        /* Columnas 2 a 10: FECHA PRÉSTAMO hasta DESCUENTO */
+        body.dark .estado-cuenta-prestamos-table > tbody > tr > td:nth-child(n+2):nth-child(-n+10) {
+            color: #cbd5e1 !important;
+        }
+
+        /* ==========================================================================
+           ESTADO DE CUENTA - TABLA DE PRÉSTAMOS EN MODO DARK
+           Quitar líneas blancas entre renglones
+           ========================================================================== */
+
+        body.dark .estado-cuenta-prestamos-table > tbody > tr > td {
+            border-top: 1px solid transparent !important;
+        }
+
+        body.dark .estado-cuenta-prestamos-table > tbody > tr {
+            border-color: transparent !important;
+        }
+
+        body.dark .estado-cuenta-prestamos-table > thead > tr > th {
+            border-bottom: 1px solid transparent !important;
+        }
+
+        /* ==========================================================================
+           ESTADO DE CUENTA - TABLA DE PRÉSTAMOS EN MODO CLARO
+           Quitar líneas entre renglones
+           ========================================================================== */
+
+        body:not(.dark) .estado-cuenta-prestamos-table > thead > tr > th {
+            background-color: #c2410c !important;
+            color: #ffffff !important;
+            border-bottom: 1px solid transparent !important;
+        }
+
+        body:not(.dark) .estado-cuenta-prestamos-table > tbody > tr > td {
+            border-top: 1px solid transparent !important;
+        }
+
+        /* ==========================================================================
+           ESTADO DE CUENTA - BORDES NARANJA EN MODO CLARO
+           ========================================================================== */
+
+        /* Información Personal del Socio */
+        body:not(.dark) .estado-cuenta-info-card {
+            border: 1px solid #ea580c !important;
+            border-radius: 8px !important;
+        }
+
+        /* Información de Préstamos */
+        body:not(.dark) .estado-cuenta-prestamos-card {
+            border: 1px solid #ea580c !important;
+            border-radius: 12px !important;
+        }
+
+        /* ==========================================================================
+           ESTADO DE CUENTA - DARK MODE GENERAL
+           ========================================================================== */
+
+        body.dark .estado-cuenta-main-card {
+            background-color: #111827 !important;
+            border: 1px solid #243447 !important;
+            color: #e5e7eb !important;
+        }
+
+        body.dark .estado-cuenta-main-body {
+            background-color: #111827 !important;
+            color: #e5e7eb !important;
+        }
+
+            body.dark .estado-cuenta-main-body h1,
+            body.dark .estado-cuenta-main-body h4 {
+                color: #f3f4f6 !important;
+            }
+
+            body.dark .estado-cuenta-main-body hr {
+                border-color: #334155 !important;
+                opacity: 1 !important;
+            }
+
+       /* ==========================================================================
+       ESTADO DE CUENTA - FORMULARIO DARK MODE
+       ========================================================================== */
+
+        body.dark .estado-cuenta-main-body .form-label {
+            color: #e5e7eb !important;
+        }
+
+            body.dark .estado-cuenta-main-body .form-control {
+                background-color: #0f172a !important;
+                color: #e5e7eb !important;
+                border-color: #334155 !important;
+            }
+
+                body.dark .estado-cuenta-main-body .form-control:focus {
+                    background-color: #0f172a !important;
+                    color: #ffffff !important;
+                    border-color: #3b82f6 !important;
+                    box-shadow: 0 0 0 0.2rem rgba(59, 130, 246, 0.25) !important;
+                }
+
+                body.dark .estado-cuenta-main-body .form-control::placeholder {
+                    color: #94a3b8 !important;
+                }
+
+        /* ==========================================================================
+           ESTADO DE CUENTA - INFORMACIÓN PERSONAL DARK MODE
+           ========================================================================== */
+
+        body.dark .estado-cuenta-info-card {
+            background-color: #111827 !important;
+            border: 1px solid #334155 !important;
+            color: #d1d5db !important;
+        }
+
+            body.dark .estado-cuenta-info-card .card-body {
+                background-color: #111827 !important;
+                color: #d1d5db !important;
+            }
+
+            body.dark .estado-cuenta-info-card strong {
+                color: #f3f4f6 !important;
+            }
+
+        /* ==========================================================================
+           ESTADO DE CUENTA - TEXTOS DARK MODE MÁS NEUTROS
+           ========================================================================== */
+
+        /* Títulos: Estado de Cuenta, Información Personal, Información de Préstamos */
+        body.dark .estado-cuenta-main-body h1,
+        body.dark .estado-cuenta-main-body h4 {
+            color: #d1d5db !important;
+        }
+
+        /* Label del formulario: Pensión */
+        body.dark .estado-cuenta-main-body .form-label {
+            color: #cbd5e1 !important;
+        }
+
+        /* Labels dentro de Información Personal: Pensión, Saldo Ahorros, etc. */
+        body.dark .estado-cuenta-info-card strong {
+            color: #cbd5e1 !important;
+            font-weight: 700 !important;
+        }
+
+        /* Valores después de los labels */
+        body.dark .estado-cuenta-info-card {
+            color: #cbd5e1 !important;
+        }
+
+        /* ==========================================================================
+           ESTADO DE CUENTA - ENCABEZADOS DE TABLA DARK MODE MÁS NEUTROS
+           ========================================================================== */
+
+        /* Encabezados: PRÉSTAMO, FECHA PRÉSTAMO, IMPORTE, etc. */
+        body.dark .estado-cuenta-prestamos-table > thead > tr > th {
+            color: #d1d5db !important;
+        }

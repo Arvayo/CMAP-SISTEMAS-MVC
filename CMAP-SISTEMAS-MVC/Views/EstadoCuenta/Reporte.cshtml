@@ -17,42 +17,43 @@ else
     <div class="table-responsive">
         <table class="table table-bordered table-striped table-sm">
             <thead class="table-dark">
-                <tr>
-                    <th>Clave Pensión</th>
-                    <th>Clave Préstamo</th>
-                    <th>Subclave</th>
-                    <th>Nombre Préstamo</th>
-                    <th>Fecha Préstamo</th>
-                    <th>Importe</th>
-                    <th>Plazo</th>
-                    <th>Fecha Vencimiento</th>
-                    <th>Saldo</th>
-                    <th>Puede Solicitar</th>
-                    <th>Importe Líquido</th>
-                    <th>Descuento</th>
-                    <th>Liquida Con</th>
-                </tr>
-            </thead>
-            <tbody>
-                @foreach (var item in Model)
-                {
                     <tr>
-                        <td>@item.ClavePension</td>
-                        <td>@item.ClavePrestamo</td>
-                        <td>@item.SubClave</td>
-                        <td>@item.NombrePrestamo</td>
-                        <td>@(item.FechaPrestamo?.ToString("dd/MM/yyyy") ?? "")</td>
-                        <td>@item.ImportePrestamo.ToString("N2")</td>
-                        <td>@item.PlazoMeses</td>
-                        <td>@(item.FechaVencimiento?.ToString("dd/MM/yyyy") ?? "")</td>
-                        <td>@item.SaldoPrestamo.ToString("N2")</td>
-                        <td>@item.CantidadPuedeSolicitar.ToString("N2")</td>
-                        <td>@item.ImporteLiquido.ToString("N2")</td>
-                        <td>@item.Descuento.GetValueOrDefault().ToString("N2")</td>
-                        <td>@item.LiquidaCon.GetValueOrDefault().ToString("N2")</td>
+                        <th>Clave Pensión</th>
+                        <th>Clave Préstamo</th>
+                        <th>Subclave</th>
+                        <th>Nombre Préstamo</th>
+                        <th>Fecha Préstamo</th>
+                        <th>Importe</th>
+                        <th>Plazo</th>
+                        <th>Fecha Vencimiento</th>
+                        <th>Saldo</th>
+                        <th>Puede Solicitar</th>
+                        <th>Importe Líquido</th>
+                        <th>Descuento</th>
+                        <th>Liquida Con</th>
                     </tr>
-                }
-            </tbody>
-        </table>
+                </thead>
+                <tbody>
+                    @foreach (var item in Model)
+                    {
+                        <tr>
+                            <td>@item.ClavePension</td>
+                            <td>@item.ClavePrestamo</td>
+                            <td>@item.SubClave</td>
+                            <td>@item.NombrePrestamo</td>
+                            <td>@(item.FechaPrestamo?.ToString("dd/MM/yyyy") ?? "")</td>
+                            <td>@item.ImportePrestamo.ToString("N2")</td>
+                            <td>@item.PlazoMeses</td>
+                            <td>@(item.FechaVencimiento?.ToString("dd/MM/yyyy") ?? "")</td>
+                            <td>@item.SaldoPrestamo.ToString("N2")</td>
+                            <td>@item.CantidadPuedeSolicitar.ToString("N2")</td>
+                            <td>@item.ImporteLiquido.ToString("N2")</td>
+                            <td>@item.Descuento.GetValueOrDefault().ToString("N2")</td>
+                            <td>@item.LiquidaCon.GetValueOrDefault().ToString("N2")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        
     </div>
 }

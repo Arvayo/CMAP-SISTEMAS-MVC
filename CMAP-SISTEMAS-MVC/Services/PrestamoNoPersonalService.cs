@@ -482,10 +482,9 @@ namespace CMAP_SISTEMAS_MVC.Services
                 return CalcularAlcanceEventosSociales(
                     ctx,
                     tipo,
-                    liquidaCon,
                     numeroPagos,
-                    alcancePorSueldo,
-                    puedeSolicitar);
+                    puedeSolicitar,
+                    liquidaCon);
             }
 
             if (tipo.ClavePrestamo == "PR")
@@ -1030,83 +1029,82 @@ namespace CMAP_SISTEMAS_MVC.Services
          * ============================================================ */
 
         /* ============================================================
-         * VB: Caso especial EV
-         * ------------------------------------------------------------
-         * EV no se comporta igual que los préstamos normales.
-         *
-         * Lógica replicada:
-         *  1. Se obtiene el importe líquido inicial:
-         *      importeLiquidoEv = puedeSolicitar - saldoActualDelTipo
-         *
-         *  2. Se usa alcancePorSueldo como base del cálculo.
-         *
-         *  3. Se calculan:
-         *      - intereses
-         *      - seguro pasivo
-         *      - fondo de garantía
-         *
-         *  4. PuedeSolicitar se recalcula:
-         *      baseCalculo + intereses + seguro + fondo
-         *
-         * Pendiente:
-         *  - Integrar DiasAdic para cerrar diferencia contra VB.
-         * ============================================================ */
-
+        * VB: Caso especial EV / EsLiquido = "S"
+        * ------------------------------------------------------------
+        * Replica el bloque legacy:
+        *
+        * tbImporteLiquido = tbPuedeSolicitar - tbLiquidacon
+        *
+        * TMPintereses = CalcularInteresAPrestamo(tbPuedeSolicitar, ...)
+        *
+        * Si DiasAdic > 0:
+        *   interés diario = (tbPuedeSolicitar * tasa anual) / 360
+        *   TMPintereses += interés diario * DiasAdic
+        *
+        * Seguro y fondo se calculan sobre:
+        *   tbPuedeSolicitar + TMPintereses
+        *
+        * Finalmente:
+        *   tbPuedeSolicitar = tbPuedeSolicitar + intereses + seguro + fondo
+        * ============================================================ */
         private (decimal puedeSolicitar, decimal importeLiquido) CalcularAlcanceEventosSociales(
-        EstadoCuentaContextDto ctx,
-        TipoPrestamoDto tipo,
-        decimal saldoActualDelTipo,
-        int numeroPagos,
-        decimal alcancePorSueldo,
-        decimal puedeSolicitarInicial)
+            EstadoCuentaContextDto ctx,
+            TipoPrestamoDto tipo,
+            int numeroPagos,
+            decimal importeLiquidoObjetivo,
+            decimal liquidaCon)
         {
+            if (importeLiquidoObjetivo <= 0 || numeroPagos <= 0)
+                return (0m, 0m);
+
+            importeLiquidoObjetivo = Math.Round(importeLiquidoObjetivo, 2);
+
+            decimal importeLiquidoReal = importeLiquidoObjetivo - liquidaCon;
+
+            if (importeLiquidoReal < 0)
+                importeLiquidoReal = 0m;
+
             decimal tasaPeriodo = ObtenerTasaPeriodo(ctx, tipo);
 
-            /*
-             * En EV, igual que PR con EsLiquido = "S",
-             * la base real del cálculo es el importe líquido objetivo.
-             */
-            decimal importeLiquidoEv = alcancePorSueldo;
-
-            decimal interesesEv = CalcularInteresAPrestamo(
-                importeLiquidoEv,
+            decimal intereses = CalcularInteresAPrestamo(
+                importeLiquidoObjetivo,
                 tasaPeriodo,
                 numeroPagos);
 
             DateTime primerPago = ObtenerPrimerPago(ctx);
 
-            int diasAdicEv = CalcularDiasAdicionales(
+            int diasAdic = CalcularDiasAdicionales(
                 ctx,
                 tipo.ClavePrestamo,
                 primerPago);
 
-            decimal interesesDiasAdic = CalcularInteresDiasAdicionales(
+            intereses += CalcularInteresDiasAdicionales(
                 tipo,
-                importeLiquidoEv,
-                diasAdicEv);
+                importeLiquidoObjetivo,
+                diasAdic);
 
-            decimal interesesTotalesEv = interesesEv + interesesDiasAdic;
+            intereses = Math.Round(intereses, 2);
 
-            decimal seguroEv = CalcularSeguroPasivo(
-                importeLiquidoEv,
-                interesesTotalesEv,
+            decimal seguro = CalcularSeguroPasivo(
+                importeLiquidoObjetivo,
+                intereses,
                 tipo);
 
-            decimal fondoEv = CalcularFondoGarantia(
-                importeLiquidoEv,
-                interesesTotalesEv,
+            decimal fondo = CalcularFondoGarantia(
+                importeLiquidoObjetivo,
+                intereses,
                 tipo);
 
-            decimal puedeSolicitarEv = Math.Round(
-                importeLiquidoEv
-                + interesesTotalesEv
-                + seguroEv
-                + fondoEv,
+            decimal puedeSolicitarFinal = Math.Round(
+                importeLiquidoObjetivo +
+                intereses +
+                seguro +
+                fondo,
                 2);
 
             return (
-                puedeSolicitarEv,
-                importeLiquidoEv
+                puedeSolicitarFinal,
+                Math.Round(importeLiquidoReal, 2)
             );
         }
 
