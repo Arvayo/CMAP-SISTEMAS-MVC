@@ -275,12 +275,11 @@ namespace CMAP_SISTEMAS_MVC.Services
         private async Task<List<TipoPrestamoDto>> ObtenerTiposPrestamoPersonalAsync(
         EstadoCuentaContextDto ctx)
         {
-            var estatus = (ctx.Estatus ?? "").Trim();
+            var estatus = (ctx.Estatus ?? string.Empty).Trim();
+            var vigencia = (ctx.Vigencia ?? string.Empty).Trim();
 
-            var fechaIngresoSocio = ctx.FechaIngreso
-                ?? throw new InvalidOperationException("No se encontró la fecha de ingreso del socio.");
-
-            var vigencia = ObtenerVigencia(fechaIngresoSocio).ToString();
+            if (string.IsNullOrWhiteSpace(vigencia))
+                throw new InvalidOperationException("No se encontró la vigencia del socio en el contexto.");
 
             return await (
                 from tp in _context.TABLA_DE_TIPOS_DE_PRESTAMOS.AsNoTracking()
@@ -357,9 +356,7 @@ namespace CMAP_SISTEMAS_MVC.Services
 
             return row;
         }
-        /* ============================================================
-         * SECCIÓN C: CONSTRUCCIÓN DE FILA PP
-         * ============================================================ */
+
         private async Task<EstadoCuentaRowsDto?> ConstruirFilaPrestamoPersonalAsync(
         EstadoCuentaContextDto ctx,
         TipoPrestamoDto tipo,
@@ -378,6 +375,15 @@ namespace CMAP_SISTEMAS_MVC.Services
             bool tienePrestamoVigente = prestamoPP != null && saldoPrestamo > 0;
             bool puedeRenovar = false;
 
+            /* ============================================================
+             * 1. Determinar si se permite calcular proyección PP
+             * ------------------------------------------------------------
+             * VB solo genera registros en TbledoctaPP cuando:
+             *
+             *   FALTAPAGAR = 0 And FALTAPLAZO = 0
+             *
+             * En C# esto se representa con puedeRenovar.
+             * ============================================================ */
             if (!tienePrestamoVigente)
             {
                 puedeRenovar = true;
@@ -391,6 +397,15 @@ namespace CMAP_SISTEMAS_MVC.Services
 
                 puedeRenovar = resumen.PuedeRenovar;
 
+                /* ============================================================
+                 * 1.1 Si NO puede renovar, solo se conserva información base
+                 * ------------------------------------------------------------
+                 * No se calcula:
+                 *   - PuedeSolicitar
+                 *   - ImporteLiquido
+                 *
+                 * El descuento se deja como la amortización vigente, si existe.
+                 * ============================================================ */
                 if (!puedeRenovar)
                 {
                     puedeSolicitar = 0m;
@@ -398,33 +413,91 @@ namespace CMAP_SISTEMAS_MVC.Services
 
                     descuento = prestamoPP!.ImporteAmortizacion > 0
                         ? prestamoPP.ImporteAmortizacion
-                        : Math.Round(importePrestamo / (tipo.PlazoRenovar > 0 ? tipo.PlazoRenovar : 1), 2);
+                        : 0m;
                 }
             }
 
+            /* ============================================================
+             * 2. Calcular proyección cuando sí puede renovar
+             * ------------------------------------------------------------
+             * Aplica para dos escenarios:
+             *
+             * A) No tiene préstamo PP vigente.
+             * B) Sí tiene préstamo PP vigente, pero ya cumple pago y plazo.
+             * ============================================================ */
             if (puedeRenovar)
             {
-                puedeSolicitar = CalcularAlcancePrestamoPersonal(ctx, tipo, saldoPrestamo);
+                /* ============================================================
+                 * 2.1 Calcular amortización anterior
+                 * ------------------------------------------------------------
+                 * Replica VB:
+                 *
+                 * If RSTPrestamo!SaldoPrestamo > 0 Then
+                 *    AmortAnt = IIf(
+                 *        RSTPrestamo!SaldoPrestamo < RSTPrestamo!ImporteAmortizacion,
+                 *        RSTPrestamo!SaldoPrestamo,
+                 *        RSTPrestamo!ImporteAmortizacion)
+                 * Else
+                 *    AmortAnt = 0
+                 * End If
+                 * ============================================================ */
+                decimal amortizacionAnterior = 0m;
+
+                if (prestamoPP != null && prestamoPP.SaldoPrestamo > 0)
+                {
+                    amortizacionAnterior = prestamoPP.SaldoPrestamo < prestamoPP.ImporteAmortizacion
+                        ? prestamoPP.SaldoPrestamo
+                        : prestamoPP.ImporteAmortizacion;
+                }
+
+                /* ============================================================
+                 * 2.2 Calcular Puede Solicitar
+                 * ============================================================ */
+                puedeSolicitar = CalcularAlcancePrestamoPersonal(
+                    ctx,
+                    tipo,
+                    amortizacionAnterior);
 
                 if (puedeSolicitar < 0)
                     puedeSolicitar = 0m;
 
-                descuento = CalcularDescuentoPrestamoPersonal(ctx, tipo, puedeSolicitar);
+                /* ============================================================
+                 * 2.3 Calcular descuento
+                 * ============================================================ */
+                descuento = CalcularDescuentoPrestamoPersonal(
+                    ctx,
+                    tipo,
+                    puedeSolicitar);
 
+                /* ============================================================
+                 * 2.4 Calcular importe líquido con lógica PV
+                 * ============================================================ */
                 importeLiquido = await CalcularImporteLiquidoPrestamoPersonalAsync(
                     ctx,
                     tipo,
                     prestamoPP,
                     puedeSolicitar);
+
+                /* ============================================================
+                 * 2.5 Si el líquido queda en cero, también dejar descuento en cero
+                 * ------------------------------------------------------------
+                 * VB inserta:
+                 *
+                 *   Importeliquido = IIf(tbImporteLiquido < 0, 0, tbImporteLiquido)
+                 *   Descuentos     = IIf(tbImporteLiquido < 0, 0, tbDescuento)
+                 *
+                 * Aquí usamos <= 0 para evitar mostrar descuento si no hay líquido útil.
+                 * ============================================================ */
+                if (importeLiquido <= 0)
+                {
+                    importeLiquido = 0m;
+                    descuento = 0m;
+                }
             }
 
-            if (tienePrestamoVigente && !puedeRenovar)
-            {
-                puedeSolicitar = 0m;
-                importeLiquido = 0m;
-            }
-
-
+            /* ============================================================
+             * 3. Construir fila final del estado de cuenta
+             * ============================================================ */
             return new EstadoCuentaRowsDto
             {
                 IdReporte = ctx.IdReporte,
@@ -452,145 +525,491 @@ namespace CMAP_SISTEMAS_MVC.Services
          * SECCIÓN D: REGLAS PP
          * ============================================================ */
         private bool PuedeRenovarPrestamoPersonal(
-        EstadoCuentaContextDto ctx,
-        TipoPrestamoDto tipo,
-        PrestamoVigenteDto prestamoPP)
+            EstadoCuentaContextDto ctx,
+            TipoPrestamoDto tipo,
+            PrestamoVigenteDto prestamoPP)
         {
-            if (prestamoPP.ImportePagare <= 0)
-                return false;
+            var resumen = ConstruirResumenPrestamoPersonal(
+                ctx,
+                new List<TipoPrestamoDto> { tipo },
+                prestamoPP);
 
-            decimal porcentajePagado =
-                1m - (prestamoPP.SaldoPrestamo / prestamoPP.ImportePagare);
-
-            decimal porcentajeMinimoPagado = tipo.PorcenRenova / 100m;
-
-            bool cumplePago = porcentajePagado >= porcentajeMinimoPagado;
-
-            bool cumpleTiempo = true;
-
-            if (prestamoPP.FechaPrestamo.HasValue && prestamoPP.FechaVencimiento.HasValue)
-            {
-                var diasTotales = (prestamoPP.FechaVencimiento.Value - prestamoPP.FechaPrestamo.Value).TotalDays;
-                var diasTranscurridos = (ctx.FechaSistema - prestamoPP.FechaPrestamo.Value).TotalDays;
-
-                if (diasTotales > 0)
-                {
-                    decimal porcentajeTiempo = (decimal)(diasTranscurridos / diasTotales);
-
-                    // 🔥 regla real (20%)
-                    decimal porcentajeMinimoTiempo = 0.20m;
-
-                    cumpleTiempo = porcentajeTiempo >= porcentajeMinimoTiempo;
-                }
-            }
-
-            return cumplePago && cumpleTiempo;
+            return resumen.PuedeRenovar;
         }
 
-        private static int ObtenerVigencia(DateTime fechaIngreso)
-        {
-            if (fechaIngreso <= new DateTime(2011, 4, 13))
-                return 20110413;
+       
 
-            if (fechaIngreso <= new DateTime(2017, 4, 30))
-                return 20170430;
-
-            return 99999999;
-        }
-
+        /* ============================================================
+        * SECCIÓN D.1: CÁLCULO DEL ALCANCE DE PRÉSTAMO PERSONAL
+        * ------------------------------------------------------------
+        * Replica la lógica base de VB en NuevaAgregaPersonales():
+        *
+        * 1. Calcula el alcance por sueldo.
+        * 2. Calcula el alcance por ahorros.
+        * 3. Toma el menor de ambos.
+        * 4. Aplica el tope global de PP.
+        *
+        * Fórmula VB equivalente:
+        *   AlcanceSueldo = Round((TOTSUELDO - Ellimite + AmortAnt) * TMPnumerodePagos, 2)
+         *   tbPuedeSolicitar = Round(MisAhorros * FactorSobreAhorro, 2)
+        *   If AlcanceSueldo < tbPuedeSolicitar Then tbPuedeSolicitar = AlcanceSueldo
+        * ============================================================ */
         private decimal CalcularAlcancePrestamoPersonal(
             EstadoCuentaContextDto ctx,
             TipoPrestamoDto tipo,
-            decimal saldoPrestamoAnterior)
+            decimal amortizacionAnterior)
         {
-            int numeroPagos = ctx.Estatus == "A"
-                ? tipo.PlazoMaximo * 2
-                : tipo.PlazoMaximo;
+            /* ------------------------------------------------------------
+             * 1. Determinar número de pagos
+             * ------------------------------------------------------------
+             * En VB:
+             *   TMPnumerodePagos = IIf(ESTATUS = "A", plazomaximo * 2, plazomaximo)
+             *
+             * Activo:
+             *   El plazo mensual se convierte a pagos quincenales.
+             *
+             * Jubilado:
+             *   El plazo se conserva como pagos mensuales.
+             * ------------------------------------------------------------ */
+            int numeroPagos = CalcularNumeroPagos(ctx, tipo);
 
-            decimal amortizacionAnterior = 0m;
+            /* ------------------------------------------------------------
+             * 2. Calcular alcance por sueldo
+             * ------------------------------------------------------------
+             * Fórmula VB:
+             *   AlcanceSueldo = Round((TOTSUELDO - Ellimite + AmortAnt) * TMPnumerodePagos, 2)
+             *
+             * Donde:
+             *   TotSueldo             = sueldo disponible del socio.
+             *   ElLimite              = límite mínimo de liquidez.
+             *   amortizacionAnterior  = descuento que se libera si renueva PP.
+             *   numeroPagos           = plazo real de pago según estatus.
+             * ------------------------------------------------------------ */
+            decimal alcanceSueldo = Math.Round(
+                (ctx.TotSueldo - ctx.ElLimite + amortizacionAnterior) * numeroPagos,
+                2
+            );
 
-            decimal alcanceSueldo =
-                (ctx.TotSueldo - ctx.ElLimite + amortizacionAnterior) * numeroPagos;
+            /* ------------------------------------------------------------
+             * 3. Calcular alcance por ahorros
+             * ------------------------------------------------------------
+             * Fórmula VB:
+             *   tbPuedeSolicitar = Round(MisAhorros * FactorSobreAhorro, 2)
+             *
+             * Importante:
+             *   Se usa FactorSobreAhorro desde DETALLE_DE_TIPOS_DE_PRESTAMOS.
+             *   No se hardcodea 2.41 / 1.85 aquí, porque la modalidad PP
+             *   debe venir configurada desde base de datos.
+             * ------------------------------------------------------------ */
+            decimal alcanceAhorros = Math.Round(
+                ctx.MisAhorros * tipo.FactorSobreAhorro,
+                2
+            );
 
-            decimal factorPP = ObtenerFactorPrestamoPersonal(ctx);
-            decimal alcanceAhorrosPP = ctx.MisAhorros * factorPP;
+            /* ------------------------------------------------------------
+             * 4. Elegir el menor alcance
+             * ------------------------------------------------------------
+             * VB compara alcance por sueldo contra alcance por ahorros.
+             * El socio solo puede solicitar hasta el menor de los dos.
+             * ------------------------------------------------------------ */
+            decimal puedeSolicitar = Math.Min(alcanceSueldo, alcanceAhorros);
 
-            decimal puedeSolicitar = Math.Min(alcanceSueldo, alcanceAhorrosPP);
-
+            /* ------------------------------------------------------------
+             * 5. Evitar montos negativos
+             * ------------------------------------------------------------
+             * Si por sueldo, límite o datos de contexto el cálculo queda
+             * negativo, se fuerza a cero.
+             * ------------------------------------------------------------ */
             if (puedeSolicitar < 0)
-                puedeSolicitar = 0;
+                puedeSolicitar = 0m;
 
-            decimal topeGlobal = ctx.MisAhorros * factorPP;
+            /* ------------------------------------------------------------
+             * 6. Calcular tope global PP
+             * ------------------------------------------------------------
+             * En VB:
+             *   VECESPP
+             *
+             * Aquí se calcula temporalmente como:
+             *   MisAhorros * FactorSobreAhorro
+             *
+             * Nota:
+             *   Si después tienes VECESPP ya calculado en EstadoCuentaContextDto,
+             *   conviene usar ctx.VecesPP en lugar de recalcularlo aquí.
+             * ------------------------------------------------------------ */
+            decimal vecesPp = ctx.MisAhorros * tipo.FactorSobreAhorro;
 
-            if ((puedeSolicitar + ctx.SaldoP - ctx.SdoPrestamoPP) > topeGlobal && topeGlobal > 0)
+            /* ------------------------------------------------------------
+             * 7. Aplicar límite global de PP
+             * ------------------------------------------------------------
+             * Fórmula VB:
+             *   If (tbPuedeSolicitar + SALDOP - SDOPRESTAMOPP) > VECESPP
+             *      And (VECESPP > 0) Then
+             *
+             *      tbPuedeSolicitar =
+             *          tbPuedeSolicitar -
+             *          ((tbPuedeSolicitar + SALDOP - SDOPRESTAMOPP) - VECESPP)
+             *   End If
+             *
+             * Donde:
+             *   SaldoP         = saldo total de préstamos.
+             *   SdoPrestamoPP  = saldo del préstamo personal actual.
+             *   vecesPp        = límite máximo permitido para PP.
+             * ------------------------------------------------------------ */
+            if (vecesPp > 0 && (puedeSolicitar + ctx.SaldoP - ctx.SdoPrestamoPP) > vecesPp)
             {
-                puedeSolicitar -= ((puedeSolicitar + ctx.SaldoP - ctx.SdoPrestamoPP) - topeGlobal);
+                puedeSolicitar -= (puedeSolicitar + ctx.SaldoP - ctx.SdoPrestamoPP) - vecesPp;
             }
 
+            /* ------------------------------------------------------------
+             * 8. Revalidar monto negativo después del tope
+             * ------------------------------------------------------------
+             * El ajuste por VECESPP puede reducir el monto por debajo de cero.
+             * En ese caso, se fuerza nuevamente a cero.
+             * ------------------------------------------------------------ */
             if (puedeSolicitar < 0)
-                puedeSolicitar = 0;
+                puedeSolicitar = 0m;
 
-            return puedeSolicitar;
+            /* ------------------------------------------------------------
+             * 9. Retornar monto final redondeado
+             * ------------------------------------------------------------
+             * Este valor corresponde a:
+             *   tbPuedeSolicitar / CantidadPuedeSolicitar
+             * ------------------------------------------------------------ */
+            return Math.Round(puedeSolicitar, 2);
         }
 
+        /* ============================================================
+         * SECCIÓN D.2: CÁLCULO DEL DESCUENTO DE PRÉSTAMO PERSONAL
+         * ------------------------------------------------------------
+         * Replica la fórmula VB:
+         *
+         *   tbDescuento = Round(tbPuedeSolicitar / TMPnumerodePagos, 2)
+         *
+         * El descuento se calcula sobre el pagaré/puede solicitar,
+         * no sobre el importe líquido.
+         * ============================================================ */
         private decimal CalcularDescuentoPrestamoPersonal(
             EstadoCuentaContextDto ctx,
             TipoPrestamoDto tipo,
             decimal puedeSolicitar)
         {
-            int numeroPagos = ctx.Estatus == "A"
-                ? tipo.PlazoMaximo * 2
-                : tipo.PlazoMaximo;
+            /* ------------------------------------------------------------
+             * 1. Determinar número de pagos
+             * ------------------------------------------------------------
+             * Activos:
+             *   PlazoMaximo * 2
+             *
+             * Jubilados:
+             *   PlazoMaximo
+             * ------------------------------------------------------------ */
+            int numeroPagos = CalcularNumeroPagos(ctx, tipo);
 
+            /* ------------------------------------------------------------
+             * 2. Validar número de pagos
+             * ------------------------------------------------------------
+             * Si no existe plazo válido, no se puede calcular descuento.
+             * ------------------------------------------------------------ */
             if (numeroPagos <= 0)
                 return 0m;
 
+            /* ------------------------------------------------------------
+             * 3. Calcular descuento
+             * ------------------------------------------------------------
+             * Fórmula VB:
+             *   tbDescuento = Round(tbPuedeSolicitar / TMPnumerodePagos, 2)
+             * ------------------------------------------------------------ */
             return Math.Round(puedeSolicitar / numeroPagos, 2);
         }
 
+        /* ============================================================
+         * SECCIÓN D.3: CÁLCULO DEL IMPORTE LÍQUIDO DE PP
+         * ------------------------------------------------------------
+         * Replica el flujo principal de VB:
+         *
+         * 1. Quitar seguro pasivo mediante factor.
+         * 2. Restar fondo de garantía.
+         * 3. Calcular amortización parcial.
+         * 4. Calcular valor presente PV.
+         * 5. Calcular interés adicional por días.
+         * 6. Restar préstamo anterior.
+         *
+         * Fórmula final VB:
+         *   tbImporteLiquido = Solicitar - PtmoAnterior - intadic
+         *
+         * Donde Solicitar ya fue recalculado con PV.
+         * ============================================================ */
         private async Task<decimal> CalcularImporteLiquidoPrestamoPersonalAsync(
             EstadoCuentaContextDto ctx,
             TipoPrestamoDto tipo,
             PrestamoVigenteDto? prestamoPP,
             decimal puedeSolicitar)
         {
+            /* ------------------------------------------------------------
+             * 1. Validar monto base
+             * ------------------------------------------------------------
+             * Si no hay cantidad posible a solicitar, no existe líquido.
+             * ------------------------------------------------------------ */
             if (puedeSolicitar <= 0)
                 return 0m;
 
-            decimal saldoAnterior = prestamoPP?.SaldoPrestamo ?? 0m;
-            decimal liquidaConAnterior = prestamoPP?.LiquidaCon ?? 0m;
+            /* ------------------------------------------------------------
+             * 2. Determinar número de pagos
+             * ------------------------------------------------------------
+             * Este valor equivale a TMPnumerodePagos en VB.
+             * ------------------------------------------------------------ */
+            int numeroPagos = CalcularNumeroPagos(ctx, tipo);
 
-            decimal seguroPasivo = Math.Round(
-                puedeSolicitar * (tipo.PorcenSeguroPasivo / 100m), 2);
+            if (numeroPagos <= 0)
+                return 0m;
 
+            /* ------------------------------------------------------------
+             * 3. Quitar seguro pasivo mediante factor
+             * ------------------------------------------------------------
+             * Fórmula VB:
+             *   FactorFondo = 1 + (PorcenSeguroPasivo / 100)
+             *   Solicitar = Round(tbPuedeSolicitar / FactorFondo, 2)
+             *
+             * Nota:
+             *   Aunque la variable VB se llama FactorFondo, en realidad
+             *   aquí se está usando el porcentaje de seguro pasivo.
+             * ------------------------------------------------------------ */
+            decimal factorSeguro = 1m + (tipo.PorcenSeguroPasivo / 100m);
+
+            decimal solicitar = factorSeguro > 0
+                ? Math.Round(puedeSolicitar / factorSeguro, 2)
+                : puedeSolicitar;
+
+            /* ------------------------------------------------------------
+             * 4. Restar fondo de garantía
+             * ------------------------------------------------------------
+             * Fórmula VB:
+             *   Solicitar = Solicitar - FondoGarantia(...)
+             *
+             * IMPORTANTE:
+             *   Esta implementación usa PorcenFondoGarantia como aproximación.
+             *   Para empatar exactamente con VB, aquí debe conectarse la rutina
+             *   legacy FondoGarantia("PP", plazoMaximo, ESTATUS, Solicitar, MisAhorros).
+             * ------------------------------------------------------------ */
             decimal fondoGarantia = Math.Round(
-                puedeSolicitar * (tipo.PorcenFondoGarantia / 100m), 2);
+                solicitar * (tipo.PorcenFondoGarantia / 100m),
+                2
+            );
 
-            decimal importeLiquido = puedeSolicitar - seguroPasivo - fondoGarantia;
+            solicitar -= fondoGarantia;
 
-            if (saldoAnterior > 0)
+            /* ------------------------------------------------------------
+             * 5. Calcular amortización parcial
+             * ------------------------------------------------------------
+             * Fórmula VB:
+             *   AmortizacionParcial = Solicitar / TMPnumerodePagos
+             *
+             * Esta amortización se usa como pago periódico para calcular PV.
+             * ------------------------------------------------------------ */
+            decimal amortizacionParcial = solicitar / numeroPagos;
+
+            /* ------------------------------------------------------------
+             * 6. Determinar tasa por periodo
+             * ------------------------------------------------------------
+             * Fórmula VB:
+             *   Si ESTATUS = "J":
+             *      nTasaPer = TasaIntNormal / 1200
+             *   Si no:
+             *      nTasaPer = TasaIntNormal / 2400
+             *
+             * Jubilado:
+             *   tasa mensual.
+             *
+             * Activo:
+             *   tasa quincenal.
+             * ------------------------------------------------------------ */
+            decimal tasaPeriodo = (ctx.Estatus ?? string.Empty).Trim() == "J"
+                ? tipo.TasaIntNormal / 1200m
+                : tipo.TasaIntNormal / 2400m;
+
+            /* ------------------------------------------------------------
+             * 7. Calcular valor presente del préstamo
+             * ------------------------------------------------------------
+             * Fórmula VB:
+             *   Solicitar = Round(Abs(PV(nTasaPer, TMPnumerodePagos, AmortizacionParcial)), 2)
+             *
+             * Este paso recalcula el importe base real del préstamo antes
+             * de restar préstamo anterior e interés adicional.
+             * ------------------------------------------------------------ */
+            decimal solicitarPv = Math.Round(
+                Math.Abs(CalcularPV(tasaPeriodo, numeroPagos, amortizacionParcial)),
+                2
+            );
+
+            /* ------------------------------------------------------------
+             * 8. Calcular días adicionales
+             * ------------------------------------------------------------
+             * En VB:
+             *   DiasAdic depende de FechaPrimerPago(...)
+             *
+             * Por ahora este helper devuelve 0 hasta conectar la lógica real.
+             * ------------------------------------------------------------ */
+            int diasAdic = CalcularDiasAdicPrestamoPersonal(ctx);
+
+            /* ------------------------------------------------------------
+             * 9. Calcular interés adicional por días
+             * ------------------------------------------------------------
+             * Fórmula VB:
+             *   intadic = Round(((Solicitar * TasaIntNormal / 100) / 360) * DiasAdic, 2)
+             *
+             * Solo aplica cuando DiasAdic > 0.
+             * ------------------------------------------------------------ */
+            decimal interesAdicional = 0m;
+
+            if (diasAdic > 0)
             {
-                importeLiquido -= liquidaConAnterior;
+                interesAdicional = Math.Round(
+                    ((solicitarPv * tipo.TasaIntNormal / 100m) / 360m) * diasAdic,
+                    2
+                );
             }
 
+            /* ------------------------------------------------------------
+             * 10. Determinar préstamo anterior a liquidar
+             * ------------------------------------------------------------
+             * Fórmula VB real:
+             *   PtmoAnterior = SaldoPrestamo - BonAnterior - BonSegAnt + MoraAnterior
+             *
+             * Temporal:
+             *   Mientras no estén conectadas:
+             *     - BonificaIntereses
+             *     - BonificaSeguroPasivo
+             *     - fu_calcular_moratorios
+             *
+             *   Se usa LiquidaCon si ya viene calculado; si no, SaldoPrestamo.
+             * ------------------------------------------------------------ */
+            decimal prestamoAnterior = 0m;
+
+            if (prestamoPP != null && prestamoPP.SaldoPrestamo > 0)
+            {
+                prestamoAnterior = prestamoPP.LiquidaCon > 0
+                    ? prestamoPP.LiquidaCon
+                    : prestamoPP.SaldoPrestamo;
+            }
+
+            /* ------------------------------------------------------------
+             * 11. Calcular importe líquido final
+             * ------------------------------------------------------------
+             * Fórmula VB:
+             *   tbImporteLiquido = Solicitar - PtmoAnterior - intadic
+             *
+             * En C#:
+             *   Solicitar = solicitarPv
+             *   PtmoAnterior = prestamoAnterior
+             *   intadic = interesAdicional
+             * ------------------------------------------------------------ */
+            decimal importeLiquido = solicitarPv - prestamoAnterior - interesAdicional;
+
+            /* ------------------------------------------------------------
+             * 12. Evitar líquido negativo
+             * ------------------------------------------------------------
+             * VB inserta 0 cuando tbImporteLiquido queda negativo.
+             * ------------------------------------------------------------ */
             if (importeLiquido < 0)
                 importeLiquido = 0m;
 
             await Task.CompletedTask;
-            return importeLiquido;
+
+            /* ------------------------------------------------------------
+             * 13. Retornar líquido final redondeado
+             * ------------------------------------------------------------ */
+            return Math.Round(importeLiquido, 2);
         }
 
-        private decimal ObtenerFactorPrestamoPersonal(EstadoCuentaContextDto ctx)
+        /* ============================================================
+         * SECCIÓN D.4: CÁLCULO DEL NÚMERO DE PAGOS
+         * ------------------------------------------------------------
+         * Equivalente VB:
+         *
+         *   TMPnumerodePagos = IIf(ESTATUS = "A",
+         *                          plazomaximo * 2,
+         *                          plazomaximo)
+         *
+         * Activos pagan quincenalmente.
+         * Jubilados pagan mensualmente.
+         * ============================================================ */
+        private static int CalcularNumeroPagos(
+            EstadoCuentaContextDto ctx,
+            TipoPrestamoDto tipo)
         {
-            if (ctx.FechaIngreso == null)
-                return 1.85m;
-
-            DateTime fechaCorte = new DateTime(2011, 4, 13);
-
-            return ctx.FechaIngreso <= fechaCorte
-                ? 2.41m
-                : 1.85m;
+            return (ctx.Estatus ?? string.Empty).Trim() == "A"
+                ? tipo.PlazoMaximo * 2
+                : tipo.PlazoMaximo;
         }
+
+        /* ============================================================
+         * SECCIÓN D.5: CÁLCULO DE VALOR PRESENTE
+         * ------------------------------------------------------------
+         * Replica el comportamiento financiero de PV usado en VB:
+         *
+         *   PV(nTasaPer, TMPnumerodePagos, AmortizacionParcial)
+         *
+         * Fórmula:
+         *   PV = PMT * (1 - (1 + tasa)^-n) / tasa
+         *
+         * Donde:
+         *   tasaPeriodo = tasa por periodo.
+         *   numeroPagos = cantidad de pagos.
+         *   pago        = amortización parcial.
+         * ============================================================ */
+        private static decimal CalcularPV(
+            decimal tasaPeriodo,
+            int numeroPagos,
+            decimal pago)
+        {
+            /* ------------------------------------------------------------
+             * 1. Validar número de pagos
+             * ------------------------------------------------------------ */
+            if (numeroPagos <= 0)
+                return 0m;
+
+            /* ------------------------------------------------------------
+             * 2. Caso sin interés
+             * ------------------------------------------------------------
+             * Si la tasa es 0, el valor presente equivale al total pagado.
+             * ------------------------------------------------------------ */
+            if (tasaPeriodo == 0)
+                return pago * numeroPagos;
+
+            /* ------------------------------------------------------------
+             * 3. Convertir a double para usar Math.Pow
+             * ------------------------------------------------------------
+             * Math.Pow trabaja con double.
+             * El resultado se convierte nuevamente a decimal.
+             * ------------------------------------------------------------ */
+            double tasa = (double)tasaPeriodo;
+            double pmt = (double)pago;
+
+            /* ------------------------------------------------------------
+             * 4. Calcular valor presente
+             * ------------------------------------------------------------
+             * Fórmula:
+             *   PV = PMT * (1 - (1 + tasa)^-n) / tasa
+             * ------------------------------------------------------------ */
+            double pv = pmt * (1 - Math.Pow(1 + tasa, -numeroPagos)) / tasa;
+
+            return (decimal)pv;
+        }
+
+        /* ============================================================
+        * SECCIÓN D.6: CÁLCULO TEMPORAL DE DÍAS ADICIONALES
+        * ------------------------------------------------------------
+        * En VB, DiasAdic depende de FechaPrimerPago(...).
+        *
+        * Por ahora se deja en cero para no alterar el cálculo mientras
+        * no esté conectada la lógica legacy de primer pago.
+         * ============================================================ */
+        private static int CalcularDiasAdicPrestamoPersonal(
+            EstadoCuentaContextDto ctx)
+        {
+            return 0;
+        }
+
+      
        
     }
 }

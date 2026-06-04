@@ -136,8 +136,10 @@
 
         @if (Model.Resultado?.ResumenPrestamoPersonal != null)
         {
+            @*
             <h4 class="mb-3">3. Información de Préstamo Personal</h4>
 
+             
             <div class="card mb-3">
                 <div class="card-body">
                     <p><strong>Tiene préstamo vigente:</strong> @(Model.Resultado.ResumenPrestamoPersonal.TienePrestamoVigente ? "Sí" : "No")</p>
@@ -151,40 +153,45 @@
                     <p><strong>Mensaje:</strong> @Model.Resultado.ResumenPrestamoPersonal.MensajeResultado</p>
                 </div>
             </div>
+             *@
         }
 
         @if (Model.Resultado != null && Model.Resultado.PrestamosPersonales.Any())
         {
-            <div class="table-responsive mb-4">
-                <table class="table table-bordered table-hover table-sm align-middle">
-                    <thead class="table-secondary">
-                        <tr>
-                            <!--<th>Clave</th>-->
-                            <!--<th>Subclave</th>-->
-                            <th>Nombre Préstamo</th>
-                            <th>Puede Solicitar</th>
-                            <th>Importe Líquido</th>
-                            <th>Descuento</th>
-                            <th>Plazo Meses</th>
-                            <th>Tasa</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach (var item in Model.Resultado.PrestamosPersonales)
-                        {
+            <h4 class="mb-3">3. Información de Préstamo Personal</h4>
+
+            <div class="estado-cuenta-prestamos-card mb-4">
+                <div class="estado-cuenta-prestamos-wrapper">
+                    <table class="table table-hover table-sm align-middle estado-cuenta-prestamos-table">
+                        <thead>
                             <tr>
-                                <!-- <td>@item.ClavePrestamo</td> -->
-                                <!-- <td>@item.SubClave</td>  -->
-                                <td>@item.NombrePrestamo</td>
-                                <td>@item.CantidadPuedeSolicitar.ToString("N2")</td>
-                                <td>@item.ImporteLiquido.ToString("N2")</td>
-                                <td>@item.Descuento.GetValueOrDefault().ToString("N2")</td>
-                                <td>@item.PlazoMeses</td>
-                                <td>@item.TasaInteres.ToString("N2")%</td>
+                                <!--<th>Clave</th>-->
+                                <!--<th>Subclave</th>-->
+                                <th>Nombre Préstamo</th>
+                                <th>Puede Solicitar</th>
+                                <th>Importe Líquido</th>
+                                <th>Descuento</th>
+                                <th>Plazo Meses</th>
+                                <th>Tasa</th>
                             </tr>
-                        }
-                    </tbody>
-                </table>
+                        </thead>
+                        <tbody>
+                            @foreach (var item in Model.Resultado.PrestamosPersonales)
+                            {
+                                <tr>
+                                    <!-- <td>@item.ClavePrestamo</td> -->
+                                    <!-- <td>@item.SubClave</td>  -->
+                                    <td>@item.NombrePrestamo</td>
+                                    <td>@item.CantidadPuedeSolicitar.ToString("N2")</td>
+                                    <td>@item.ImporteLiquido.ToString("N2")</td>
+                                    <td>@item.Descuento.GetValueOrDefault().ToString("N2")</td>
+                                    <td>@item.PlazoMeses</td>
+                                    <td>@item.TasaInteres.ToString("N2")%</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
             </div>
         }
 
@@ -200,6 +207,7 @@
         }
     </div>
 </div>
+
 
 @section Scripts {
     <partial name="_ValidationScriptsPartial" />
